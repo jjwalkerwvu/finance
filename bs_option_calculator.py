@@ -48,6 +48,7 @@ J.J. Walker
 '''
 ## import libraries
 import numpy as np
+import scipy as sp
 import matplotlib.pyplot as plt
 from scipy.special import erf
 from heat_solver_dirichlet import heat_solver_dirichlet
@@ -88,37 +89,41 @@ from heat_solver_dirichlet import heat_solver_dirichlet
 ## let's try using heat_solver.py in order to compute the value of a european 
 ## option
 
-## strike price
-K=1
+## strike price, in dollars
+K=294.0
 
 ## Smax is the largest stock price we will consider; which corresponds to the  
 ## right boundary condition. 
 ## I will first try considering a maximum value that is ten times the strike
 ## price
-Smax=10*K
+#Smax=50*K
+Smax=310
 ## Smin cannot be zero, because we will transform to log(S/K) later
-Smin=1e-4
-## Include the spot price; value of underlying at t=0:
-St=K
+#Smin=1e-4
+Smin=278
+## Include the spot price; value of underlying at t=0, use K or some other value:
+St=293.41
 ## 100 points per S increment, which gives 1000 total points
-p=1000
+p=5000
 ## the resulting S, stock price array:
 S=np.linspace(Smin,Smax,p)
-## total time till expiry, in months?
-T=1
+## total time till expiry, in units of years?
+T=5/365.0
 ## number of time steps; dt = T/N
-N=50
+N=100
 ## We then have a time array that should go from t=0 to t=T (expiration)
 t=np.linspace(0,T,N)
 ## risk free rate (use 4 week treasury bill)
-r=(2.4)/100
-## volatility (this is given as a percentage?)
-sigma=(10.0)/100
+r=(2.36)/100
+## volatility (this is given as a percentage? In one year? Answer seems to be, yes)
+## You can just take the volatility given on a website like etrade, should
+## work here
+sigma=(6.3361/100)
 ## the factor k; risk free rate as a multiple of the volatility
 k=2*r/(sigma**2)
 ## alpha and beta, which will be needed when we transform back later
-a=-(k-1)/2
-b=-(k-1)**2/4
+a=-(k-1)/2.0
+b=-((k-1)**2)/4.0
 
 ## 
 ## perform the transformations:
@@ -147,6 +152,8 @@ V0=K*np.exp(a*x+b*Tau[-1])*U[-1,:]
 ## is!
 exact=np.zeros([N,p])
 V=np.zeros([N,p])
+## keep in mind, standard normal cumulative distribution function is:
+#stdnorm(x)=1/2.0*(1+sp.special.erf(x/np.sqrt(2)))
 for index in range(0,N):
 	d1=1/sigma/np.sqrt(T-t[index])*(np.log(S/K)+(r+sigma**2/2)*(T-t[index]))
 	d2=d1-sigma*np.sqrt(T-t[index])
@@ -163,17 +170,30 @@ print(str(VN[100]))
 #plt.plot(S,V0,'.g')
 #plt.xlim(0,2*K)
 #plt.ylim(0,2*K)
-plt.xlim(0.5,1.5)
-plt.ylim(0,1)
+plt.xlim(0.5*St,1.5*St)
+plt.ylim(0,1*St)
 ## because the solver "works backward", there will be the most error at t=0,
 ## not at expiration
 l=0
-plt.plot(S,exact[l,:],'.k')
-plt.plot(S,V[l,:],'.b')
+plt.plot(S,exact[l,:],'.-k')
+plt.plot(S,V[l,:],'.-b')
 plt.plot(S,error[l,:],'.r')
 plt.show()
+## Make a legend
 #plt.savefig('test_final.png')
 
+## This code seems to perform 'ok' when comparing exact and numerical 
+## solutions, but there is significant error for S~St, which is exactly
+## where we need the most accuracy. I think there will be less error with even
+## larger value of Smax, but need to check this.
+## Also, need to confirm what the units are for everything, like time, 
+## volatility, etc.
+
+
+## 27 April 2019:
+## Confirmed that the exact solution performs well when comparing to other
+## option calculators. 
+## Note: by making the boundaries "close" to the strike price (or is it the spot price at t=0?), the numerical solution becomes very close to the exact solution
 
 
 
