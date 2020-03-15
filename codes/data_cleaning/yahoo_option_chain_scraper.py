@@ -8,14 +8,23 @@ Created on Saturday March 14
         Turn this into a function later?
 """
 
+import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import date
+from datetime import datetime
+from datetime import date
+from dateutil.tz import *
+import time
+## import what we need to automatically write output to a folder
+import os
+import sys
+## import for webscraping
 import requests
 import lxml.html as lh
 #import re
-import pandas as pd
-import numpy as np
+
 ## import the analytical solver to calculate the greeks for each option chain!
 #from bs_analytical_solver import bs_analytical_solver
 
@@ -75,9 +84,9 @@ for t in tr_elements[0]:
 	name=t.text_content()
 	## get rid of spaces.
 	## If there are no spaces, this statement does no harm.
-	name.replace(" ", "_")
+	name=name.replace(" ", "_")
 	## also get rid of '%' special character.
-	name.replace("%", "Percent")
+	name=name.replace("%", "Percent")
 	call_cols.append(name)
     #print '%d:"%s"'%(i,name)
     #call_cols.append((name,[]))
@@ -98,6 +107,8 @@ for line in range(1,puts_begin):
 #chain_dict={i:[option_list[]] for i in call_cols}
 ## or just use the list.
 df_calls=pd.DataFrame(option_list, columns=call_cols)
+## get rid of any weird symbols, like -,+,%
+df_calls[df_calls.columns[2:5]]=df_calls[df_calls.columns[2:5]].apply(pd.to_numeric,errors='coerce')
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Now do puts
 option_list=[]
@@ -115,17 +126,27 @@ for line in range(puts_begin+1,len(tr_elements)):
 ## or just use the list.
 ## the columns for puts are the same for calls.
 df_puts=pd.DataFrame(option_list, columns=call_cols)
+
+## need the date and time if we want to write to a csv file
+tnow=pd.to_datetime('today').now()
+## replace colons and periods with underscores if making a file
+#date_dt = datetime.datetime.strptime(datetime.now(), '%B %d, %Y, %H')
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## A little snippet of code that I will use to get the time to expiration in 
 ## days
 
 ## the actual time of day when the option expires; try 4pm, although the 
 ## holder of the option has until 5pm to exercise the option, 5:30 pm 
-## according to the nasdaq.
+## according to the nasdaq? Double check!
+
 ## exp_time variable should eventuall go to the top of this script?
-exp_time=' 16' ## 4pm
+exp_time=' 16' ## 4pm?
 ## This test date is how the dates are usually formatted on marketwatch.com.
-test_date='September 4, 2020'+exp_time
+#test_date='September 4, 2020'+exp_time
+## We should get the expiry date from the dataframe, calls or puts
+#exp_string=df_calls[df_calls.columns[0]][0]
+#year=
+test_date = datetime.now()+exp_time
 date_dt = datetime.datetime.strptime(test_date, '%B %d, %Y, %H')
 
 ## get the time right now, as the code is run.
@@ -149,4 +170,6 @@ path=os.getcwd()+time.strftime("/%Y/%m/%d")
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	#return df_calls,df_puts
 
-
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Some plots for now; put into a separate script/function later?
+plt.plot(df_calls.Strike,df_calls.Last_Price,'.k');plt.show()
