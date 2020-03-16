@@ -10,7 +10,10 @@ Created on Saturday March 14
 	Inputs
 		ticker	-	the ticker symbol.
 					Stocks are just the letters	
-					Indices include '^' in front of the letters
+					Indices include '^' in front of the letters.	
+					
+		Do I need an input for the timezone where the function is used?
+		Target directory for where to write the option chain csv files?
 """
 
 import pandas as pd
@@ -49,15 +52,21 @@ def yahoo_option_chain_scraper(ticker)
 	## as a constant for now?
 	#y=0.02
 
-	# the ticker to use?
+	## the ticker to use?
+	## do some error checking here?
 	#ticker='SPY'
-	# the url:
+	## the url; this defaults to the nearest expiration date.
+	## Maybe need to have a desired expiration date as an input?
 	url_string='https://finance.yahoo.com/quote/'+ticker+'/options/'
+	## Here is an example for a chosen date, VIX 15 April 2020
+	#https://finance.yahoo.com/quote/%5EVIX/options?date=1586908800
 	r = requests.get(url_string)
 	c=r.content
 	## need the date and time if we want to write to a csv file.
 	## Get this immediately after pinging the website
 	tnow=pd.to_datetime('today').now()
+	## target directory? Maybe make this an input to the function?
+	target_dir='/home/jjwalker/Desktop/finance/data/options'
 
 
 	doc = lh.fromstring(r.content)
@@ -103,8 +112,17 @@ def yahoo_option_chain_scraper(ticker)
 	#chain_dict={i:[option_list[]] for i in call_cols}
 	## or just use the list.
 	df_calls=pd.DataFrame(option_list, columns=call_cols)
-	## get rid of any weird symbols, like -,+,%
-	df_calls[df_calls.columns[2:6]]=df_calls[df_calls.columns[2:6]].apply(
+	
+	## get rid of any weird symbols, like ',','%'; 
+	## Do not have to worry about having only dashes as entries; these will 
+	## become nans when columns[2:] are forced to numeric values.
+	df_calls[df_calls.columns[2:]]=df_calls[df_calls.columns[2:]].replace(
+		{',':''},regex=True)
+	df_calls[df_calls.columns[2:]]=df_calls[df_calls.columns[2:]].replace(
+		{'%':''},regex=True)
+
+	## convert the relevant string values to numeric
+	df_calls[df_calls.columns[2:]]=df_calls[df_calls.columns[2:]].apply(
 		pd.to_numeric,errors='coerce')
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## Now do puts
@@ -125,7 +143,17 @@ def yahoo_option_chain_scraper(ticker)
 	## the columns for puts are the same for calls.
 	df_puts=pd.DataFrame(option_list, columns=call_cols)
 
+	## get rid of any weird symbols, like ',','%'; 
+	## Do not have to worry about having only dashes as entries; these will 
+	## become nans when columns[2:] are forced to numeric values.
+	df_puts[df_puts.columns[2:]]=df_puts[df_puts.columns[2:]].replace(
+		{',':''},regex=True)
+	df_puts[df_puts.columns[2:]]=df_puts[df_puts.columns[2:]].replace(
+		{'%':''},regex=True)
 
+	## convert the relevant string values to numeric
+	df_puts[df_puts.columns[2:]]=df_puts[df_puts.columns[2:]].apply(
+		pd.to_numeric,errors='coerce')
 	
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## A little snippet of code that I will use to get the time to expiration  
@@ -140,7 +168,8 @@ def yahoo_option_chain_scraper(ticker)
 	## This test date is how the dates are usually formatted on marketwatch.com.
 	#test_date='September 4, 2020'+exp_time
 	## We should get the expiry date from the dataframe, calls or puts
-	#exp_string=df_calls[df_calls.columns[0]][0]
+	exp_string=df_calls[df_calls.columns[0]][0]
+	## turn the exp_string into a datetime
 	#year=
 	test_date = datetime.now()+exp_time
 	date_dt = datetime.datetime.strptime(test_date, '%B %d, %Y, %H')
@@ -160,8 +189,9 @@ def yahoo_option_chain_scraper(ticker)
 
 	## code to check the current date, and make a folder for today's date if 
 	## it does not exist.
-	path=os.getcwd()+time.strftime("/%Y/%m/%d")
-	#os.makedirs(path, exist_ok=True)
+	#path=os.getcwd()+time.strftime("/%Y/%m/%d")
+	path=target_dir+time.strftime("/%Y/%m/%d")
+	os.makedirs(path, exist_ok=True)
 	
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## save the data into two dataframes; put tnow and expiration date into
@@ -170,6 +200,6 @@ def yahoo_option_chain_scraper(ticker)
 	## replace colons and periods with underscores if making a file
 	#date_dt = datetime.datetime.strptime(datetime.now(), '%B %d, %Y, %H')	
 	
-	return tnow,df_calls,df_puts
+	return tnow,dexp,df_calls,df_puts
 
 
