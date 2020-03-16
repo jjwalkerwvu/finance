@@ -14,6 +14,8 @@ Created on Saturday March 14
 					
 		Do I need an input for the timezone where the function is used?
 		Target directory for where to write the option chain csv files?
+
+		A flag for whether to write option chain data to file or not?
 """
 
 import pandas as pd
@@ -65,6 +67,10 @@ def yahoo_option_chain_scraper(ticker)
 	## need the date and time if we want to write to a csv file.
 	## Get this immediately after pinging the website
 	tnow=pd.to_datetime('today').now()
+	## the time zone where the code is run, possible check your location to 
+	## obtain. Could possibly use as an input, but it might be nice to check
+	## the device's location to obtain automatically with this function
+	timezone='CET'
 	## target directory? Maybe make this an input to the function?
 	target_dir='/home/jjwalker/Desktop/finance/data/options'
 
@@ -159,47 +165,76 @@ def yahoo_option_chain_scraper(ticker)
 	## A little snippet of code that I will use to get the time to expiration  
 	## in days
 
-	## the actual time of day when the option expires; try 4pm, although the 
-	## holder of the option has until 5pm to exercise the option, 5:30 pm 
+	## the actual time of day when the option expires; try 4pm EDT, although  
+	## the holder of the option has until 5pm to exercise the option, 5:30 pm 
 	## according to the nasdaq? Double check!
 
 	## exp_time variable should eventuall go to the top of this script?
-	exp_time=' 16' ## 4pm?
+	#exp_time=' 16' ## 4pm?
+	exp_time='16:00'
+
 	## This test date is how the dates are usually formatted on marketwatch.com.
 	#test_date='September 4, 2020'+exp_time
+	
 	## We should get the expiry date from the dataframe, calls or puts
 	exp_string=df_calls[df_calls.columns[0]][0]
-	## turn the exp_string into a datetime
-	#year=
-	test_date = datetime.now()+exp_time
-	date_dt = datetime.datetime.strptime(test_date, '%B %d, %Y, %H')
+	## remove the ticker
+	exp_string=exp_string.split(ticker)[1]
+	## turn the exp_string into a datetime.
+	## first two digits are the expiration year; '20' is assumed for the 
+	## thousands and hundreds place for now.
+	exp_year='20'+exp_string[:2]
+	exp_month=exp_string[2:4]
+	exp_day=exp_string[4:6]
+	exp_date=pd.to_datetime(exp_year+'-'+exp_month+'-'+exp_day+'-'+exp_time)
+	
+	#test_date = datetime.now()+exp_time
+	#date_dt = datetime.datetime.strptime(test_date, '%B %d, %Y, %H')
 
 	## get the time right now, as the code is run.
-	tnow=pd.to_datetime('today').now()
+	#tnow=pd.to_datetime('today').now()
 	## convert local time to utc
-	#tnow.tz_localize(timezone).tz_convert('utc')
+	tnow.tz_localize(timezone).tz_convert('utc')
 	## in practice though, we will just assume all times (for stock purposes) 
 	## to be in eastern time, so just convert our local time to that
 	tnow=tnow.tz_localize(timezone).tz_convert('US/Eastern')
 
 	## the time to expiration is today's date subtracted from the future date;
 	## get the result in units of days!
-	texp=(pd.Timestamp(date_dt).tz_localize('US/Eastern')-pd.Timestamp(tnow)
-		)/np.timedelta64(1,'D')
-
+	## Maybe texp belongs in a script or function where this function is 
+	## called from
+	#texp=(pd.Timestamp(date_dt).tz_localize('US/Eastern')-pd.Timestamp(tnow)
+	#	)/np.timedelta64(1,'D')
+	texp=(pd.Timestamp(exp_date).tz_localize('US/Eastern')-pd.Timestamp(tnow)
+		)/np.timedelta64(1,'D')	
+	
+	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## code to check the current date, and make a folder for today's date if 
 	## it does not exist.
 	#path=os.getcwd()+time.strftime("/%Y/%m/%d")
-	path=target_dir+time.strftime("/%Y/%m/%d")
-	os.makedirs(path, exist_ok=True)
+	path=target_dir+tnow.strftime("/%Y/%m/%d")
+	## the line below is apparently for python 3!
+	#os.makedirs(path, exist_ok=True)
+	## convert tnow, the time at which the data was retrieved, into a string
+	## for a filename.
+	tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
 	
-	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## save the data into two dataframes; put tnow and expiration date into
 	## a second header above the column names
+	date_header=('Date Retrieved,'+
+				tnow.strftime("%Y-%m-%d %H:%M:%S.%f")+','+
+				'Date of Expiry,'+
+				exp_date.strftime("%Y-%m-%d %H:%M:%S.%f"))
 
-	## replace colons and periods with underscores if making a file
-	#date_dt = datetime.datetime.strptime(datetime.now(), '%B %d, %Y, %H')	
+	## replace colons and periods with underscores if making a file?
+	#date_dt = datetime.datetime.strptime(datetime.now(), '%B %d, %Y, %H')
+	filename=path+'/'+tnow_str+'_'+ticker	
+
+	#s = pd.Series(types_header_for_insert, index=df.columns)
+	#df_calls = df_calls.append(date_header, ignore_index=True).append(
+	#	df_calls, ignore_index=True)
+	df_calls.to_csv(filename+'_Calls'+'.csv',header=date_header)	
 	
-	return tnow,dexp,df_calls,df_puts
+	return tnow,exp_date,df_calls,df_puts
 
 
