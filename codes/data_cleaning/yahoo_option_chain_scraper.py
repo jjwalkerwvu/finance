@@ -48,7 +48,7 @@ import lxml.html as lh
 # r - risk free rate
 # T - time to expiration
 
-def yahoo_option_chain_scraper(ticker)
+def yahoo_option_chain_scraper(ticker):
 
 	## the yield of the risk-free rate; scrape this from somewhere too or use 
 	## as a constant for now?
@@ -226,12 +226,17 @@ def yahoo_option_chain_scraper(ticker)
 				'Date of Expiry,'+
 				exp_date.strftime("%Y-%m-%d %H:%M:%S.%f"))
 
+	date_header_list=['Date_Retrieved', 
+						tnow.strftime("%Y-%m-%d %H:%M:%S.%f"),
+						'Date_of_expiry', 
+						exp_date.strftime("%Y-%m-%d %H:%M:%S.%f")]
+
 	## replace colons and periods with underscores if making a file?
 	#date_dt = datetime.datetime.strptime(datetime.now(), '%B %d, %Y, %H')
 	filename=path+'/'+tnow_str+'_'+ticker	
 
-	#s = pd.Series(types_header_for_insert, index=df.columns)
-	#df_calls = df_calls.append(date_header, ignore_index=True).append(
+	#s = pd.Series(date_header, index=df.columns)
+	#df_calls = df_calls.append(date_header_list, ignore_index=True).append(
 	#	df_calls, ignore_index=True)
 	df_calls.to_csv(filename+'_Calls'+'.csv',header=date_header)	
 	
