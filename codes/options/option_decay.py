@@ -12,6 +12,11 @@ A simple test of the bs_analytical_solver.py function
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
+
+## insert the path corresponding to bs_analytical solver; we will need this 
+## function!
+# insert at 1, 0 is the script path (or '' in REPL)
+sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/options')
 from bs_analytical_solver import bs_analytical_solver
 
 otm_strike=300.09

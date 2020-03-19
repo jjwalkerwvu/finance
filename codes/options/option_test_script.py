@@ -5,7 +5,7 @@ Created on Monday March 16
 
     option_test_script.py
         This script uses the yahoo_option_chain_scraper to plot the volatility
-		surface and produce a 
+		surface and produce an implied probability distribution.
 
 """
 
@@ -28,8 +28,13 @@ ticker='^SPX'
 ## we will need this function!
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
+## insert the path corresponding to bs_analytical solver; we will need this 
+## function!
+# insert at 1, 0 is the script path (or '' in REPL)
+sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/options')
 
 from yahoo_option_chain_scraper import yahoo_option_chain_scraper
+from bs_analytical_solver import bs_analytical_solver
 
 ## Now call the option chain scraper
 dnow,dexp,df_calls,df_puts=yahoo_option_chain_scraper(ticker)
