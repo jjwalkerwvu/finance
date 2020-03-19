@@ -25,18 +25,19 @@ import numpy as np
 import datetime
 import sys
 
-def yahoo_csv_reader(filename):
+def yahoo_csv_reader(filename,ticker):
 	## The first thing we must do is figure out what kind of document it is by
 	## the filename, csv not included!
+	## Wait, this seems unnecessary, they are all formatted the same?
 
 	## strings that end with =F are futures contracts!
-	'=F' in filename
+	#'=F' in ticker
 
 	## strings that begin with ^ are indices or treasury yields;
-	'^' in filename
+	#'^' in ticker
 	
 	## Treasuries begin with ^T
-	'^T' in filename
+	#'^T' in ticker
 
 	## option for balance sheet?
 	## use arg or kwarg?
@@ -45,9 +46,10 @@ def yahoo_csv_reader(filename):
 	## load up stock data:
 	df=pd.read_csv(filename+'.csv',header=0)
 	df['Date'] = pd.to_datetime(df.Date,infer_datetime_format=True)
-	df=df.rename(columns={'Date':'date'})
-	df=df.set_index('date')
-	df[df[1:]]=df[df.columns[1:]].apply(pd.to_numeric,errors='coerce')
+	## This rename is not really needed.
+	#df=df.rename(columns={'Date':'date'})
+	df=df.set_index('Date')
+	df=df[df.columns].apply(pd.to_numeric,errors='coerce')
 
 	## return the data as a data frame with the chosen format
 	return df

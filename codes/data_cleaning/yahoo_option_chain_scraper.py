@@ -11,7 +11,9 @@ Created on Saturday March 14
 		ticker	-	the ticker symbol.
 					Stocks are just the letters	
 					Indices include '^' in front of the letters.	
-					
+		
+		
+		
 		Do I need an input for the timezone where the function is used?
 		Target directory for where to write the option chain csv files?
 

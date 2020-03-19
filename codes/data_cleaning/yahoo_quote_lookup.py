@@ -4,7 +4,8 @@ Created on Saturday March 14
 @author: Jeffrey J. Walker
 
     yahoo_quote_lookup.py
-        This function is designed to quickly grab the price of a security
+        This function is designed to quickly grab the price of a security.
+		Maybe also allow an option to download the 
 
 	Inputs
 		ticker	-	the ticker symbol.
@@ -13,7 +14,8 @@ Created on Saturday March 14
 					
 		Do I need an input for the timezone where the function is used?
 		Target directory for where to write the option chain csv files?
-
+		
+		args/kwargs?
 		A flag for whether to write to file or not?
 """
 
@@ -33,7 +35,10 @@ import lxml.html as lh
 #import re
 
 def yahoo_quote_lookup(ticker):
+	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	## if statements for different ticker types??
 
+	## If just doing a quick quote lookup?
 	url_string='https://finance.yahoo.com/quote/'+ticker
 	r = requests.get(url_string)
 	c=r.content
@@ -47,5 +52,10 @@ def yahoo_quote_lookup(ticker):
 
 	doc = lh.fromstring(r.content)
 	tr_elements = doc.xpath('//tr')
+	
+	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	## slightly different code to download the (full) data set.
+	## url string is something like this?
+	#url_string='https://finance.yahoo.com/quote/'+ticker+'/history?p='+ticker
 
 	return price
