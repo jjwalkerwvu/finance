@@ -1,5 +1,5 @@
 """
-Created on Saturday March 14
+Created on Saturday March 14 2020
 
 @author: Jeffrey J. Walker
 
@@ -37,6 +37,7 @@ import lxml.html as lh
 def yahoo_quote_lookup(ticker):
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## if statements for different ticker types??
+	## might want an option to collect bath month price quotes for futures
 
 	## If just doing a quick quote lookup?
 	url_string='https://finance.yahoo.com/quote/'+ticker
