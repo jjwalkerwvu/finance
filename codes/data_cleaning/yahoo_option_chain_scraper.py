@@ -44,7 +44,7 @@ import sys
 ## import for webscraping
 import requests
 import lxml.html as lh
-#import re
+import re
 
 ## import the analytical solver to calculate the greeks for each option chain!
 #from bs_analytical_solver import bs_analytical_solver
@@ -191,21 +191,33 @@ def yahoo_option_chain_scraper(write_path,ticker):
 	#test_date='September 4, 2020'+exp_time
 	
 	## We should get the expiry date from the dataframe, calls or puts
-	exp_string=df_calls[df_calls.columns[0]][0]
+	#exp_string=df_calls[df_calls.columns[0]][0]
 	## remove the ticker; This does not work for spx or other index options!
 	## Maybe better to split based on the year, which is known from tnow?
 	## Anything before the tens place of the year corresponds to characters
 	## relating to the ticker, but not necessarily containing the ticker 
 	## exactly 
-	exp_string=exp_string.split(ticker)[1]
+	#exp_string=exp_string.split(ticker)[1]
 	## turn the exp_string into a datetime.
 	## first two digits are the expiration year; '20' is assumed for the 
 	## thousands and hundreds place for now.
-	exp_year='20'+exp_string[:2]
-	exp_month=exp_string[2:4]
-	exp_day=exp_string[4:6]
-	exp_date=pd.to_datetime(exp_year+'-'+exp_month+'-'+exp_day+'-'+exp_time)
+	#exp_year='20'+exp_string[:2]
+	#exp_month=exp_string[2:4]
+	#exp_day=exp_string[4:6]
+	#exp_date=pd.to_datetime(exp_year+'-'+exp_month+'-'+exp_day+'-'+exp_time)
 	
+	## We should get the expiry date from the dataframe, calls or puts
+	exp_string=df_calls[df_calls.columns[0]][0]
+	## Here is a better way, ASSUMING YAHOO FINANCE WILL ALWAYS USE THE
+	## CONTRACT NAME FORMAT: "ticker info"+"exp date"+"c or p"+"strike"
+	temp=re.findall(r'\d+', exp_string)
+	## temp should have two components; the first one is for the date and 
+	## second is for the strike.
+	exp_year='20'+temp[0][:2]
+	exp_month=temp[0][2:4]
+	exp_day=temp[0][4:6]
+	exp_date=pd.to_datetime(exp_year+'-'+exp_month+'-'+exp_day+'-'+exp_time)
+
 	#test_date = datetime.now()+exp_time
 	#date_dt = datetime.datetime.strptime(test_date, '%B %d, %Y, %H')
 
