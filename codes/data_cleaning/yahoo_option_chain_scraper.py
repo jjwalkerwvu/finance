@@ -6,8 +6,19 @@ Created on Saturday March 14
     yahoo_option_chain_scraper.py
         This function obtains the options chain for a particular stock symbol.
         Turn this into a function later?
+		
+		This seems to only fetch the nearest expiration date options chain, 
+		can we modify this and use a function input to find nearest calendar
+		date expiration to the input date?
+
+		Should the risk-free rate be scraped from some location when this 
+		function runs, or should that functionality be given to the script
+		that calls this function?
 
 	Inputs
+		path	- 	the target directory, where the option chain will be 
+					written. 	
+					args or kwargs for write to file flag?
 		ticker	-	the ticker symbol.
 					Stocks are just the letters	
 					Indices include '^' in front of the letters.	
@@ -50,7 +61,7 @@ import lxml.html as lh
 # r - risk free rate
 # T - time to expiration
 
-def yahoo_option_chain_scraper(ticker):
+def yahoo_option_chain_scraper(write_path,ticker):
 
 	## the yield of the risk-free rate; scrape this from somewhere too or use 
 	## as a constant for now?
@@ -74,7 +85,8 @@ def yahoo_option_chain_scraper(ticker):
 	## the device's location to obtain automatically with this function
 	timezone='CET'
 	## target directory? Maybe make this an input to the function?
-	target_dir='/home/jjwalker/Desktop/finance/data/options'
+	#target_dir='/home/jjwalker/Desktop/finance/data/options'
+	target_dir=write_path
 
 
 	doc = lh.fromstring(r.content)
@@ -180,7 +192,11 @@ def yahoo_option_chain_scraper(ticker):
 	
 	## We should get the expiry date from the dataframe, calls or puts
 	exp_string=df_calls[df_calls.columns[0]][0]
-	## remove the ticker
+	## remove the ticker; This does not work for spx or other index options!
+	## Maybe better to split based on the year, which is known from tnow?
+	## Anything before the tens place of the year corresponds to characters
+	## relating to the ticker, but not necessarily containing the ticker 
+	## exactly 
 	exp_string=exp_string.split(ticker)[1]
 	## turn the exp_string into a datetime.
 	## first two digits are the expiration year; '20' is assumed for the 
@@ -213,10 +229,13 @@ def yahoo_option_chain_scraper(ticker):
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## code to check the current date, and make a folder for today's date if 
 	## it does not exist.
-	#path=os.getcwd()+time.strftime("/%Y/%m/%d")
+	path=os.getcwd()+time.strftime("/%Y/%m/%d")
+	## in future, change target_dir to the path variable, given as an input to
+	## the function
 	path=target_dir+tnow.strftime("/%Y/%m/%d")
 	## the line below is apparently for python 3!
 	#os.makedirs(path, exist_ok=True)
+	os.makedirs(path)
 	## convert tnow, the time at which the data was retrieved, into a string
 	## for a filename.
 	tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
