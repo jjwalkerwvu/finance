@@ -247,7 +247,10 @@ def yahoo_option_chain_scraper(write_path,ticker):
 	path=target_dir+tnow.strftime("/%Y/%m/%d")
 	## the line below is apparently for python 3!
 	#os.makedirs(path, exist_ok=True)
-	os.makedirs(path)
+	## Workaround for python 2
+	if not os.path.exists(path):
+		os.makedirs(path)
+	
 	## convert tnow, the time at which the data was retrieved, into a string
 	## for a filename.
 	tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
