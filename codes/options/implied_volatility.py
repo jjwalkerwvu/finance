@@ -25,19 +25,23 @@ Inputs:
 import numpy as np
 import scipy as sp
 import scipy.optimize as optimize
+#from bs_analytical_solver import bs_analytical_solver
+## insert the path corresponding to bs_analytical solver; we will need this 
+## function!
+# insert at 1, 0 is the script path (or '' in REPL)
+sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/options')
 from bs_analytical_solver import bs_analytical_solver
-
 
 def implied_volatility(o_price,S,K,r,T,sigma,o_type):
 	#print('working')
 	## bisect requires that f(a) and f(b) have different signs.
 	## here is some logic to ensure that f(a) and f(b) have different signs.
-	bs_val,delta,gamma,vega,theta,rho=bs_analytical_solver(
+	bs_val,second_deriv,delta,gamma,vega,theta,rho=bs_analytical_solver(
 			S,K,r,T,sigma,o_type)
 	o_greater=(o_price-bs_val)>0
 	## wrapper function to work with optimize.bisect?
 	def f(sigma,S,K,r,T,o_type,o_price):
-		bs_val,delta,gamma,vega,theta,rho=bs_analytical_solver(
+		bs_val,second_deriv,delta,gamma,vega,theta,rho=bs_analytical_solver(
 			S,K,r,T,sigma,o_type)
 		return bs_val-o_price
 	#optimize.bisect(f,a,b,args=(),xtol=2e-12,rtol=8.881784197001252e-16,maxiter=100,full_optput=False, disp=True)
