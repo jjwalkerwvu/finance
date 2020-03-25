@@ -42,7 +42,7 @@ def yahoo_quote_lookup(ticker):
 	## If just doing a quick quote lookup?
 	url_string='https://finance.yahoo.com/quote/'+ticker
 	r = requests.get(url_string)
-	c=r.content
+	#c=r.content
 	## need the date and time if we want to write to a csv file.
 	## Get this immediately after pinging the website
 	tnow=pd.to_datetime('today').now()
@@ -53,6 +53,15 @@ def yahoo_quote_lookup(ticker):
 
 	doc = lh.fromstring(r.content)
 	tr_elements = doc.xpath('//tr')
+
+	previous_close=tr_elements[0].text_content()
+	price_open=tr_elements[1].text_content()
+	bid=tr_elements[2].text_content()
+	ask=tr_elements[3].text_content()
+	volume=tr_elements[6].text_content()
+	
+	## set price to the midpoint?
+	price=(bid+ask)/2.0
 	
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## slightly different code to download the (full) data set.

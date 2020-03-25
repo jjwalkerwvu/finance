@@ -67,16 +67,31 @@ def yahoo_option_chain_scraper(write_path,ticker):
 	## as a constant for now?
 	#y=0.02
 
+	## Do not forget, we should also return, and write to file, the current
+	## spot price of the asset!
+	## I do not know how to grab the price of the asset from the option chain
+	## page, so here is a workaround:
+	#url_string='https://finance.yahoo.com/quote/'+ticker
+	#r = requests.get(url_string)
+	#doc = lh.fromstring(r.content)
+	#tr_elements = doc.xpath('//tr')
+	#bid=tr_elements[2].text_content()
+	#ask=tr_elements[3].text_content()
+	#price=(bid+ask)/2.0
+	## (Because this takes time, the spot price may not be the same when we
+	## access the option chain
+
 	## the ticker to use?
 	## do some error checking here?
 	#ticker='SPY'
 	## the url; this defaults to the nearest expiration date.
 	## Maybe need to have a desired expiration date as an input?
 	url_string='https://finance.yahoo.com/quote/'+ticker+'/options/'
-	## Here is an example for a chosen date, VIX 15 April 2020
-	#https://finance.yahoo.com/quote/%5EVIX/options?date=1586908800
+	## Here is another example, with a unix date at the end, May 15 2020
+	#url_string='https://query1.finance.yahoo.com/v7/finance/options/'+ticker+'?date=1589500800'
 	r = requests.get(url_string)
-	c=r.content
+	## Is this line even needed?
+	#c=r.content
 	## need the date and time if we want to write to a csv file.
 	## Get this immediately after pinging the website
 	tnow=pd.to_datetime('today').now()
@@ -257,6 +272,7 @@ def yahoo_option_chain_scraper(write_path,ticker):
 	
 	## save the data into two dataframes; put tnow and expiration date into
 	## a second header above the column names
+	## INCLUDE THE CURRENT SPOT PRICE OF THE ASSET AS WELL!
 	date_header=('Date Retrieved,'+
 				tnow.strftime("%Y-%m-%d %H:%M:%S.%f")+','+
 				'Date of Expiry,'+
