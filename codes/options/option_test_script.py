@@ -46,6 +46,10 @@ path='/home/jjwalker/Desktop/finance/data/options'
 ## Now call the option chain scraper
 dnow,dexp,df_calls,df_puts=yahoo_option_chain_scraper(path,ticker)
 
+## time to expiration, from dnow and dexp, in days:
+texp=(pd.Timestamp(dexp).tz_localize('US/Eastern')-pd.Timestamp(dnow)
+		)/np.timedelta64(1,'D')	
+
 ## calculate the total time between now and expiration date, and convert to
 ## annualized percentage; you need to find an appropriate risk free bond
 ## at the option expiration date; time to maturity equal to dexp-dnow
@@ -55,17 +59,20 @@ y_annual=0.003
 ## should the data be smoothed in some way (non-invasive way) so that we can
 ## get a less noisy second derivative of the call/put prices?
 ## perhaps some kind of interpolation - with a constant step size?
+## The standard treatment is to use SABR regression on the implied volatility
 
 ## A relatively simple interpolation scheme, using splines
 ## FIGURE THIS OUT FOR SIMPLE LINEAR INTERPOLATION!
 ## only include Strikes, Bids, and Asks where there is volume!
-x=np.array(df_calls.Strike[~np.isnan(df_calls.Volume)])
+xtemp=np.array(df_calls.Strike[~np.isnan(df_calls.Volume)])
 ## bid-ask midpoint
 ytemp=np.array((df_calls.Ask[~np.isnan(df_calls.Volume)]+
 	df_calls.Bid[~np.isnan(df_calls.Volume)])/2.0)
+## Implied Volatility for all of the valid, non-nan strikes:
+iv_temp=np.array(df_calls.Implied_Volatility[~np.isnan(df_calls.Volume)])
 #ytemp=np.array((df_calls.Ask+df_calls.Bid)/2.0)
-## find the first non-nan!
-y=np.array((ytemp[0]))
+## find the first non-nan! This should also be the largest value!
+y=np.array(np.max(ytemp))
 ## remove any "anomalous points"; call prices have to decrease with increasing
 ## strike price!
 keep_array=[0]
@@ -73,7 +80,7 @@ keep_array=[0]
 for i in range(1,len(ytemp)):
 	#print(str(i))
 	if (np.sum(ytemp[i]<y)==y.size)&(
-		np.sum(ytemp[i]>ytemp[i:])==(len(ytemp[i:])-1)): #y[i]<y[i-1]:
+		np.sum(ytemp[i]>ytemp[i:])==(len(ytemp[i:])-1)): 
 		#print(str(y[i])+'<'+str(y[i-1])+' at index:'+str(i))
 		keep_array.append(i)
 		#y.append(ytemp[i])
@@ -82,8 +89,34 @@ for i in range(1,len(ytemp)):
 
 ## put into numerical order:
 #keep_array.sort()
-#x=x[keep_array]
+x=xtemp[keep_array]
 #y=y[keep_array]
+iv=iv_temp[keep_array]
+
+## Partial "Analytical" solution for g(K):
+St=243.68
+gtemp=np.zeros(len(x))
+#g=np.zeros(len(xnew))
+#delta=xnew[1]-xnew[0]
+for i in range(1,len(gtemp)-1):
+	## naive, finite-difference approach
+    #g[i]=np.exp(y_annual)*(ynew[i+1]-2*ynew[i]+ynew[i-1])/(2*delta**2)
+	solution,second_deriv,delta,gamma,vega,theta,rho=bs_analytical_solver(
+		S=St,K=xtemp[i],r=y_annual,T=texp/365,sigma=iv_temp[i]/100.0,o_type='c')
+	gtemp[i]=np.exp(y_annual*texp)*second_deriv
+
+## you have to renormalize the implied distribution!
+const=np.trapz(gtemp,x)
+g=gtemp/const
+           
+plt.plot(x,g,'.k');plt.show()
+
+## probability of the asset to be between two price limits:
+k1=2450
+k2=2550
+prob=np.trapz(g[(x>=2450)&(x<=np.max(x))],x[(x>=2450)&(x<=np.max(x))])
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	
 tck=interpolate.splrep(x[keep_array],ytemp[keep_array],s=0)
 npoints=1e2
