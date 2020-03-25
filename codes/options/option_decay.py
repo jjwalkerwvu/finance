@@ -33,13 +33,14 @@ texp=t[::-1]
 otm_solution=np.zeros((len(t)))
 atm_solution=np.zeros((len(t)))
 itm_solution=np.zeros((len(t)))
+## do we need any arrays for the second derivative?
 
 for i in range(len(t)):
-    otm_solution[i],delta,gamma,vega,theta,rho = bs_analytical_solver(
+    otm_solution[i],second_deriv,delta,gamma,vega,theta,rho = bs_analytical_solver(
 	S=St,K=otm_strike,r=rfr,T=texp[i]/365.0,sigma=sig,o_type=otype)
-    atm_solution[i],delta,gamma,vega,theta,rho = bs_analytical_solver(
+    atm_solution[i],second_deriv,delta,gamma,vega,theta,rho = bs_analytical_solver(
 	S=St,K=atm_strike,r=rfr,T=texp[i]/365.0,sigma=sig,o_type=otype)
-    itm_solution[i],delta,gamma,vega,theta,rho = bs_analytical_solver(
+    itm_solution[i],second_deriv,delta,gamma,vega,theta,rho = bs_analytical_solver(
 	S=St,K=itm_strike,r=rfr,T=texp[i]/365.0,sigma=sig,o_type=otype)
 
 #print('Price:'+str(solution))

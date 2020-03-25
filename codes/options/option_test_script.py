@@ -11,6 +11,8 @@ Created on Monday March 16 2020
 
 import pandas as pd
 import numpy as np
+#from scipy.interpolate import griddata
+from scipy import interpolate
 import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import date
@@ -22,8 +24,8 @@ import sys
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Be sure that you use a valid ticker symbol!
 ## Indices have a '^' before their letter symbols!
-#ticker='^SPX'
-ticker='SPY'
+ticker='^SPX'
+#ticker='SPY'
 
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!
@@ -45,13 +47,79 @@ path='/home/jjwalker/Desktop/finance/data/options'
 dnow,dexp,df_calls,df_puts=yahoo_option_chain_scraper(path,ticker)
 
 ## calculate the total time between now and expiration date, and convert to
-## annualized percentage:
+## annualized percentage; you need to find an appropriate risk free bond
+## at the option expiration date; time to maturity equal to dexp-dnow
 y_annual=0.003
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## should the data be smoothed in some way (non-invasive way) so that we can
 ## get a less noisy second derivative of the call/put prices?
 ## perhaps some kind of interpolation - with a constant step size?
 
+## A relatively simple interpolation scheme, using splines
+## FIGURE THIS OUT FOR SIMPLE LINEAR INTERPOLATION!
+## only include Strikes, Bids, and Asks where there is volume!
+x=np.array(df_calls.Strike[~np.isnan(df_calls.Volume)])
+## bid-ask midpoint
+ytemp=np.array((df_calls.Ask[~np.isnan(df_calls.Volume)]+
+	df_calls.Bid[~np.isnan(df_calls.Volume)])/2.0)
+#ytemp=np.array((df_calls.Ask+df_calls.Bid)/2.0)
+## find the first non-nan!
+y=np.array((ytemp[0]))
+## remove any "anomalous points"; call prices have to decrease with increasing
+## strike price!
+keep_array=[0]
+#keep_array=[]
+for i in range(1,len(ytemp)):
+	#print(str(i))
+	if (np.sum(ytemp[i]<y)==y.size)&(
+		np.sum(ytemp[i]>ytemp[i:])==(len(ytemp[i:])-1)): #y[i]<y[i-1]:
+		#print(str(y[i])+'<'+str(y[i-1])+' at index:'+str(i))
+		keep_array.append(i)
+		#y.append(ytemp[i])
+		y=np.append(y,ytemp[i])
+		## Why do I end up with len(y)>len(ytemp[keep_array])?
+
+## put into numerical order:
+#keep_array.sort()
+#x=x[keep_array]
+#y=y[keep_array]
+	
+tck=interpolate.splrep(x[keep_array],ytemp[keep_array],s=0)
+npoints=1e2
+#xnew=np.linspace(df_calls.Strike.iloc[0],df_calls.Strike.iloc[-1],npoints)
+xnew=np.linspace(x[0],x[-1],npoints)
+#ynew=interpolate.splev(xnew,tck,der=0)
+ynew=np.interp(xnew,x[keep_array],ytemp[keep_array])
+plt.plot(xnew,ynew,'.k');plt.show()
+
+## is hermite polynomial interpolation an option?
+#np.polynomial.hermite.hermfit(x[keep_array],y,deg=2)
+
+
+## linear interpolation
+npoints=1e3
+xnew=np.linspace(df_calls.Strike.iloc[0],df_calls.Strike.iloc[-1],npoints)
+xp=np.array(df_calls.Strike)
+fp=np.array((df_calls.Ask+df_calls.Bid)/2.0)
+ynew=np.interp(xnew,xp,fp)
+plt.plot(xnew,ynew,'.k');plt.show()
+
+## Let's test with a log normal distribution?
+#xnew=np.linspace(-5,5,1e3)
+#sigma=1.0
+#mu=0.0
+#ynew=(1/sigma/np.sqrt(2*np.pi))*np.exp(-0.5*((xnew-mu)/sigma)**2)
+
+
+## Get the risk-neutral probability distribution function, g(K)
+g=np.zeros(len(xnew))
+delta=xnew[1]-xnew[0]
+for i in range(1,len(g)-1):
+    g[i]=np.exp(y_annual)*(ynew[i+1]-2*ynew[i]+ynew[i-1])/(2*delta**2)
+
+            
+plt.plot(xnew,g,'.k');plt.show()
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Some plots for now; put into a separate script/function later?
 plt.plot(df_calls.Strike,df_calls.Last_Price,'.k');plt.show()
