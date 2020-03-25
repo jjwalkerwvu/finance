@@ -68,7 +68,7 @@ def bs_analytical_solver(S,K,r,T,sigma,o_type):
 		second_derivative=(1/np.pi)*((
 							1/(sigma*np.sqrt(T-t)))*np.exp(-(d1**2)/2)-
 							d1*np.exp(-(d1**2)/2)*(
-							K/(1.0*S)/(sigma*np.sqrt(T-t)))**2)
+							K/S/(sigma*np.sqrt(T-t)))**2)
 
 		delta=1.0/2*(1+sp.special.erf(d1/np.sqrt(2)))
 		gamma=1/np.sqrt(2*np.pi)*np.exp(-(d1**2)/2)/(
