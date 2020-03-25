@@ -36,13 +36,13 @@ otype='p'
 #otype='c'
 #actual_price=1.0
 
-strike=2380
-St=2300
-rfr=(0.1)/100
-texp=1/365.0
-sig=(60.17/100)
-otype='c'
-actual_price=71.0
+#strike=2380
+#St=2300
+#rfr=(0.1)/100
+#texp=1/365.0
+#sig=(60.17/100)
+#otype='c'
+#actual_price=71.0
 
 
 solution,second_deriv,delta,gamma,vega,theta,rho = bs_analytical_solver(
