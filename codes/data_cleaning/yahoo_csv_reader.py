@@ -12,9 +12,11 @@ Created on Friday March 13 2020
 		filename	-	filename, must be a string! 
 						The filename should include the directory?
 						Make sure to error check
+
 		ticker		-	the ticker symbol.
 						Stocks are just the letters	
 						Indices include '^' in front of the letters.
+						Is this variable even needed?
 	args/kwargs? include if I want to also the scraping of balance sheets...
 	
 

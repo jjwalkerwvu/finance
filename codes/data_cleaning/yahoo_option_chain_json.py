@@ -1,0 +1,112 @@
+"""
+Created on Saturday March 21 2020
+
+@author: Jeffrey J. Walker
+
+    yahoo_option_chain_json.py
+        This function obtains the options chain for a particular stock symbol.
+        Turn this into a function later?
+		
+		This seems to only fetch the nearest expiration date options chain, 
+		can we modify this and use a function input to find nearest calendar
+		date expiration to the input date?
+
+		Should the risk-free rate be scraped from some location when this 
+		function runs, or should that functionality be given to the script
+		that calls this function?
+
+	Inputs
+		path	- 	the target directory, where the option chain will be 
+					written. 	
+					args or kwargs for write to file flag?
+		ticker	-	the ticker symbol.
+					Stocks are just the letters	
+					Indices include '^' in front of the letters.	
+		date	- 	user inputs a date? If not given, use the nearest expiry
+					date
+		
+		
+		Do I need an input for the timezone where the function is used?
+		Target directory for where to write the option chain csv files?
+
+		A flag for whether to write option chain data to file or not?
+"""
+
+import pandas as pd
+import numpy as np
+from functools import reduce
+from datetime import datetime
+from datetime import date
+from dateutil.tz import *
+import time
+## import what we need to automatically write output to a folder
+import os
+import sys
+## import for webscraping
+#import requests
+#import lxml.html as lh
+import re
+import json
+from json import loads
+
+def yahoo_option_chain_json(write_path,ticker,date):
+
+	## Maybe query the "default" option chain first, and from there scan the
+	## json string to find expiration dates. Then use that information to get
+	## the closest expiration date to the user-input date.
+	url_string='https://query1.finance.yahoo.com/v7/finance/options/'+ticker'
+	
+	#r = requests.get(url_string)
+	## need the date and time if we want to write to a csv file.
+	## Get this immediately after pinging the website
+	tnow=pd.to_datetime('today').now()
+	## the time zone where the code is run, possible check your location to 
+	## obtain. Could possibly use as an input, but it might be nice to check
+	## the device's location to obtain automatically with this function
+	timezone='CET'
+	## target directory? Maybe make this an input to the function?
+	#target_dir='/home/jjwalker/Desktop/finance/data/options'
+	target_dir=write_path
+
+	## use this???
+	bs_json = pd.io.json.read_json(url_string)
+	## found through trial and error, hopefully all yahoo option chains 
+	## look like this
+	entries=bs_json['optionChain']['result'][0].keys()
+	expiry_dates=bs_json['optionChain']['result'][0][entries[1]]
+	## now that all of the expiry dates are known, get the closest date to 
+	## the user input! Then make another query.
+	## closest date is whichever entry in expiry date has the smallest 
+	## difference to the user input date.
+	## closest date in unix time. Convert to datetime later
+	#closest_date=''
+	#url_string='https://query1.finance.yahoo.com/v7/finance/options/'+ticker+'?date='+closest_date
+	## An old example:
+	#url_string='https://query1.finance.yahoo.com/v7/finance/options/'+ticker+'?date=1589500800'
+	
+	strikes=bs_json['optionChain']['result'][0][entries[2]]
+	quote=bs_json['optionChain']['result'][0][entries[4]]
+	## could also use midpoint of bid ask?
+	latest_price=quote['regularMarketPrice']
+	option_chain=bs_json['optionChain']['result'][0][entries[5]]
+	## these are lists of dictionaries!
+	puts_list=option_chain[0]['puts']
+	calls_list=option_chain[0]['calls']
+	## is this even needed?
+	#exp_date=option_chain[0]['expirationDate']
+	## convert these lists of dictionaries into a dictionary of lists?
+	puts_dict = reduce(lambda d, src: d.update(src) or d, dicts, {})
+	
+	## 
+	#stuff=json.loads(r.content)
+	## seems strange to load contnet, then do dumps, but this at least gives a
+	## searchable string.
+	#attempt=json.dumps(stuff, indent=4,sort_keys=True)
+	## can split the json string into rows, maybe this can work?
+	#thing=attempt.split('\n')
+
+	#expiry_dates=[]
+
+
+	return tnow,exp_date,df_calls,df_puts
+
