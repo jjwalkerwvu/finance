@@ -36,7 +36,7 @@ sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/options')
 
-from yahoo_option_chain_scraper import yahoo_option_chain_scraper
+from yahoo_option_chain_json import yahoo_option_chain_json
 from bs_analytical_solver import bs_analytical_solver
 
 ## What is the path to the option chain?
@@ -44,7 +44,11 @@ from bs_analytical_solver import bs_analytical_solver
 path='/home/jjwalker/Desktop/finance/data/options'
 
 ## Now call the option chain scraper
-dnow,dexp,df_calls,df_puts=yahoo_option_chain_scraper(path,ticker)
+## call the next calendar month options by default
+t_plus_30=pd.to_datetime('today').now()+timedelta(days=30)
+input_date=time.mktime(t_plus_30.timetuple())
+
+dnow,dexp,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
 
 ## time to expiration, from dnow and dexp, in days:
 texp=(pd.Timestamp(dexp).tz_localize('US/Eastern')-pd.Timestamp(dnow)
@@ -107,22 +111,21 @@ x=xtemp[keep_array]
 iv=iv_temp[keep_array]
 
 ## Partial "Analytical" solution for g(K):
-St=243.68
-gtemp=np.zeros(len(x))
+gtemp=np.zeros(len(xptemp))
 #g=np.zeros(len(xnew))
 #delta=xnew[1]-xnew[0]
 for i in range(1,len(gtemp)-1):
 	## naive, finite-difference approach
     #g[i]=np.exp(y_annual)*(ynew[i+1]-2*ynew[i]+ynew[i-1])/(2*delta**2)
 	solution,second_deriv,delta,gamma,vega,theta,rho=bs_analytical_solver(
-		S=St,K=xtemp[i],r=y_annual,T=texp/365,sigma=iv_temp[i],o_type='c')
-	gtemp[i]=np.exp(y_annual*texp)*second_deriv
+		S=St,K=xptemp[i],r=y_annual,T=texp/365,sigma=ivp_temp[i],o_type='c')
+	gtemp[i]=np.exp(y_annual*texp/365)*second_deriv
 
 ## you have to renormalize the implied distribution!
-const=np.trapz(gtemp,x)
+const=np.trapz(gtemp,xtemp)
 g=gtemp/const
            
-plt.plot(x,g,'.k');plt.show()
+plt.plot(xtemp,g,'.k');plt.show()
 
 ## probability of the asset to be between two price limits:
 k1=2450
