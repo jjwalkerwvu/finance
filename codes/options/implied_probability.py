@@ -16,6 +16,7 @@ from scipy import interpolate
 import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import date
+from datetime import timedelta
 from dateutil.tz import *
 import time
 ## import what we need to automatically write output to a folder
