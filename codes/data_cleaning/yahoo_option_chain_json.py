@@ -16,14 +16,14 @@ Created on Saturday March 21 2020
 		that calls this function?
 
 	Inputs
-		path	- 	the target directory, where the option chain will be 
-					written. 	
-					args or kwargs for write to file flag?
-		ticker	-	the ticker symbol.
-					Stocks are just the letters	
-					Indices include '^' in front of the letters.	
-		date	- 	user inputs a date? If not given, use the nearest expiry
-					date
+		path		- 	the target directory, where the option chain will be 
+						written. args or kwargs for write to file flag?
+						Should there be a default path if none given?
+		ticker		-	the ticker symbol.
+						Stocks are just the letters	
+						Indices include '^' in front of the letters.	
+		input_date	- 	user inputs a date? If not given, use the nearest 
+						expiry date? Should this be unix or datetime format?
 		
 		
 		Do I need an input for the timezone where the function is used?
@@ -46,11 +46,11 @@ import sys
 ## import for webscraping
 #import requests
 #import lxml.html as lh
-import re
+#import re
 import json
 #from json import loads
 
-def yahoo_option_chain_json(write_path,ticker,date):
+def yahoo_option_chain_json(write_path,ticker,input_date):
 
 	## Maybe query the "default" option chain first, and from there scan the
 	## json string to find expiration dates. Then use that information to get
@@ -80,8 +80,10 @@ def yahoo_option_chain_json(write_path,ticker,date):
 	## closest date is whichever entry in expiry date has the smallest 
 	## difference to the user input date.
 	exp_array=np.array(expiry_dates)*1.0
-	## closest date in unix time. Convert to datetime later
-	closest_date=exp_array[((exp_array-date)**2)==np.min((exp_array-date)**2)]
+	## closest date in unix time. This ends up being a float.
+	## Convert to datetime later
+	closest_date=exp_array[
+			((exp_array-input_date)**2)==np.min((exp_array-input_date)**2)]
 	## the actual time of day when the option expires; try 4pm EDT, although  
 	## the holder of the option has until 5pm to exercise the option, 5:30 pm 
 	## according to the nasdaq? Double check!
@@ -89,7 +91,8 @@ def yahoo_option_chain_json(write_path,ticker,date):
 	#exp_time=' 16' ## 4pm?
 	#exp_time='16:00'
 	exp_date=datetime.utcfromtimestamp(closest_date)+timedelta(hours=16)
-	url_string='https://query1.finance.yahoo.com/v7/finance/options/'+ticker+'?date='+closest_date
+	## modify the original url string to include the nearest date in the query
+	url_string=url_string+'?date='+str(int(closest_date[0]))
 	
 	
 	bs_json = pd.io.json.read_json(url_string)
