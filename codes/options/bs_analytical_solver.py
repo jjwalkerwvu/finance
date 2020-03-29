@@ -65,11 +65,17 @@ def bs_analytical_solver(S,K,r,T,sigma,o_type):
 		solution=1.0/2*(1+sp.special.erf(d1/np.sqrt(2)))*S-1.0/2*(1
 			+sp.special.erf(d2/np.sqrt(2)))*K*np.exp(-r*(T-t))
 
-		second_derivative=(1/np.pi)*((
-							1/(sigma*np.sqrt(T-t)))*np.exp(-(d1**2)/2)-
-							d1*np.exp(-(d1**2)/2)*(
-							K/S/(sigma*np.sqrt(T-t)))**2)
+		## pretty sure I messed up this derivative; this is wrong		
+		#second_derivative=(1/np.pi)*((
+		#					1/(sigma*np.sqrt(T-t)))*np.exp(-(d1**2)/2)-
+		#					d1*np.exp(-(d1**2)/2)*(
+		#					K/S/(sigma*np.sqrt(T-t)))**2)
 
+		## Another attempt, hopefully correct this time! 
+		## This should be log-normal, right?
+		second_derivative=(1/(K*sigma*np.sqrt(2*np.pi*(T-t))))*np.exp(
+			-(d1**2)/2)
+			
 		delta=1.0/2*(1+sp.special.erf(d1/np.sqrt(2)))
 		gamma=1/np.sqrt(2*np.pi)*np.exp(-(d1**2)/2)/(
 				S*sigma*np.sqrt(T-t))
@@ -89,9 +95,10 @@ def bs_analytical_solver(S,K,r,T,sigma,o_type):
 				))*K*np.exp(-r*(T-t))-1.0/2*(
 				1+sp.special.erf(-d1/np.sqrt(2)))*S
 		
-		## currently I am only using the second derivative of the call price;
-		## put the second derivative of the put solution at a later time.
-		second_derivative=0
+		## second derivative should be exactly the same as calls for european
+		## option
+		second_derivative=(1/(K*sigma*np.sqrt(2*np.pi*(T-t))))*np.exp(
+			-(d1**2)/2)
 
 		delta=1.0/2*(1+sp.special.erf(d1/np.sqrt(2)))-1.0
 		gamma=1/np.sqrt(2*np.pi)*np.exp(-(d1**2)/2)/(
