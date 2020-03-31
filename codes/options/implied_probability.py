@@ -27,6 +27,9 @@ import sys
 ## Indices have a '^' before their letter symbols!
 ticker='^SPX'
 #ticker='SPY'
+#ticker='TSLA'
+#ticker='^VIX'
+#ticker='^DJX'
 
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!
@@ -48,7 +51,7 @@ path='/home/jjwalker/Desktop/finance/data/options'
 ## call the next calendar month options by default
 t_plus_30=pd.to_datetime('today').now()+timedelta(days=30)
 input_date=time.mktime(t_plus_30.timetuple())
-
+## Ready to call the option chain scraper/reader
 dnow,dexp,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
 
 ## time to expiration, from dnow and dexp, in days:
@@ -59,6 +62,7 @@ texp=(pd.Timestamp(dexp).tz_localize('US/Eastern')-pd.Timestamp(dnow)
 ## annualized percentage; you need to find an appropriate risk free bond
 ## at the option expiration date; time to maturity equal to dexp-dnow
 y_annual=0.003
+
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## should the data be smoothed in some way (non-invasive way) so that we can
@@ -78,6 +82,20 @@ iv_temp=np.array(df_calls.impliedVolatility[~np.isnan(df_calls.volume)&((df_call
 xptemp=np.array(df_puts.strike[~np.isnan(df_puts.volume)&((df_puts.bid!=0)&(df_puts.ask!=0))])
 yptemp=np.array((df_puts.ask[~np.isnan(df_puts.volume)&((df_puts.bid!=0)&(df_puts.ask!=0))]+df_puts.bid[~np.isnan(df_puts.volume)&((df_puts.bid!=0)&(df_puts.ask!=0))])/2.0)
 ivp_temp=np.array(df_puts.impliedVolatility[~np.isnan(df_puts.volume)&((df_puts.bid!=0)&(df_puts.ask!=0))])
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## plot the probability distribution assuming a simple log-normal, to test the
+## method in bs_analytical_solver
+iv_min=np.min(iv_temp)
+gnorm=np.zeros(len(xtemp))
+for i in range(1,len(gnorm)-1):
+	## naive, finite-difference approach
+    #g[i]=np.exp(y_annual)*(ynew[i+1]-2*ynew[i]+ynew[i-1])/(2*delta**2)
+	solution,second_deriv,delta,gamma,vega,theta,rho=bs_analytical_solver(
+		S=St,K=xtemp[i],r=y_annual,T=texp/365,sigma=iv_min,o_type='c')
+	gnorm[i]=np.exp(y_annual*texp/365)*second_deriv
+
+plt.plot(xtemp,gnorm,'.k');plt.show()
 
 ## A relatively simple interpolation scheme, using splines
 ## FIGURE THIS OUT FOR SIMPLE LINEAR INTERPOLATION!
@@ -111,49 +129,73 @@ x=xtemp[keep_array]
 #y=y[keep_array]
 iv=iv_temp[keep_array]
 
-## Partial "Analytical" solution for g(K):
-gtemp=np.zeros(len(xptemp))
+## Partial "Analytical" solution for g(K) using calls:
+gtemp=np.zeros(len(xtemp))
 #g=np.zeros(len(xnew))
 #delta=xnew[1]-xnew[0]
 for i in range(1,len(gtemp)-1):
 	## naive, finite-difference approach
     #g[i]=np.exp(y_annual)*(ynew[i+1]-2*ynew[i]+ynew[i-1])/(2*delta**2)
 	solution,second_deriv,delta,gamma,vega,theta,rho=bs_analytical_solver(
-		S=St,K=xptemp[i],r=y_annual,T=texp/365,sigma=ivp_temp[i],o_type='c')
+		S=St,K=xtemp[i],r=y_annual,T=texp/365,sigma=iv_temp[i],o_type='c')
 	gtemp[i]=np.exp(y_annual*texp/365)*second_deriv
 
 ## you have to renormalize the implied distribution!
 const=np.trapz(gtemp,xtemp)
-g=gtemp/const
-           
-plt.plot(xtemp,g,'.k');plt.show()
+g=gtemp/const        
+plt.plot(xtemp,gtemp,'.k');plt.show()
+
+
+## Partial "Analytical" solution for g(K) using puts:
+## (should theoretically be the same!)
+gptemp=np.zeros(len(xptemp))
+#g=np.zeros(len(xnew))
+#delta=xnew[1]-xnew[0]
+for i in range(1,len(gptemp)-1):
+	## naive, finite-difference approach
+    #g[i]=np.exp(y_annual)*(ynew[i+1]-2*ynew[i]+ynew[i-1])/(2*delta**2)
+	solution,second_deriv,delta,gamma,vega,theta,rho=bs_analytical_solver(
+		S=St,K=xptemp[i],r=y_annual,T=texp/365,sigma=ivp_temp[i],o_type='p')
+	gptemp[i]=np.exp(y_annual*texp/365)*second_deriv
+
+## you have to renormalize the implied distribution!
+const=np.trapz(gptemp,xptemp)
+gp=gptemp/const        
+plt.plot(xptemp,gp,'.k');plt.show()
 
 ## probability of the asset to be between two price limits:
 k1=2450
 k2=2550
-prob=np.trapz(g[(x>=2450)&(x<=np.max(x))],x[(x>=2450)&(x<=np.max(x))])
+prob=np.trapz(gp[(xptemp>=k1)&(xptemp<=k2)],
+	xptemp[(xptemp>=k1)&(xptemp<=k2)])
+## probability of the asset to be below some price limit:
+prob=np.trapz(gp[(xptemp>=0)&(xptemp<=k1)],xptemp[(xptemp>=0)&(xptemp<=k1)])
+## probability of the asset to be greater the spot price
+prob=np.trapz(gp[(xptemp>=St)&(xptemp<=np.max(xptemp))],
+	xptemp[(xptemp>=St)&(xptemp<=np.max(xptemp))])
+
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	
-tck=interpolate.splrep(x[keep_array],ytemp[keep_array],s=0)
-npoints=1e2
+#tck=interpolate.splrep(x[keep_array],ytemp[keep_array],s=0)
+#npoints=1e2
 #xnew=np.linspace(df_calls.Strike.iloc[0],df_calls.Strike.iloc[-1],npoints)
-xnew=np.linspace(x[0],x[-1],npoints)
+#xnew=np.linspace(x[0],x[-1],npoints)
 #ynew=interpolate.splev(xnew,tck,der=0)
-ynew=np.interp(xnew,x[keep_array],ytemp[keep_array])
-plt.plot(xnew,ynew,'.k');plt.show()
+#ynew=np.interp(xnew,x[keep_array],ytemp[keep_array])
+#plt.plot(xnew,ynew,'.k');plt.show()
 
 ## is hermite polynomial interpolation an option?
 #np.polynomial.hermite.hermfit(x[keep_array],y,deg=2)
 
 
 ## linear interpolation
-npoints=1e3
-xnew=np.linspace(df_calls.Strike.iloc[0],df_calls.Strike.iloc[-1],npoints)
-xp=np.array(df_calls.Strike)
-fp=np.array((df_calls.Ask+df_calls.Bid)/2.0)
-ynew=np.interp(xnew,xp,fp)
-plt.plot(xnew,ynew,'.k');plt.show()
+#npoints=1e3
+#xnew=np.linspace(df_calls.Strike.iloc[0],df_calls.Strike.iloc[-1],npoints)
+#xp=np.array(df_calls.Strike)
+#fp=np.array((df_calls.Ask+df_calls.Bid)/2.0)
+#ynew=np.interp(xnew,xp,fp)
+#plt.plot(xnew,ynew,'.k');plt.show()
 
 ## Let's test with a log normal distribution?
 #xnew=np.linspace(-5,5,1e3)
@@ -161,32 +203,23 @@ plt.plot(xnew,ynew,'.k');plt.show()
 #mu=0.0
 #ynew=(1/sigma/np.sqrt(2*np.pi))*np.exp(-0.5*((xnew-mu)/sigma)**2)
 
-
-## Get the risk-neutral probability distribution function, g(K)
-g=np.zeros(len(xnew))
-delta=xnew[1]-xnew[0]
-for i in range(1,len(g)-1):
-    g[i]=np.exp(y_annual)*(ynew[i+1]-2*ynew[i]+ynew[i-1])/(2*delta**2)
-
-            
-plt.plot(xnew,g,'.k');plt.show()
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Some plots for now; put into a separate script/function later?
-plt.plot(df_calls.Strike,df_calls.Last_Price,'.k');plt.show()
 ## plot the last price
 plt.figure()
-plt.plot(df_calls.Strike,df_calls.Last_Price,'dc')
-plt.plot(df_calls.Strike,df_calls.Last_Price,'sm')
+plt.plot(df_calls.strike,df_calls.lastPrice,'dc',markeredgecolor='c')
+plt.plot(df_calls.strike,df_calls.lastPrice,'sm',markeredgecolor='m')
+#plt.show()
 
 ## plot bid ask midpoint
-plt.plot(df_calls.Strike,(df_calls.Ask+df_calls.Bid)/2,'.k');plt.show()
+#plt.plot(df_calls.strike,(df_calls.ask+df_calls.bid)/2,'.k');plt.show()
 ## plot the call bid/ask and put bid/ask for each strike
 plt.figure()
-plt.plot(df_calls.Strike,df_calls.Ask,'vc',label='Call Ask')
-plt.plot(df_calls.Strike,df_calls.Bid,'^c',label='Call Bid')
-plt.title('Date: Option Chain Call Prices')
+plt.plot(df_calls.strike,df_calls.ask,'vc',label='Call Ask',markeredgecolor='c')
+plt.plot(df_calls.strike,df_calls.bid,'^c',label='Call Bid',markeredgecolor='c')
+plt.title(dexp.strftime("%Y %b %d") +' Expiry Option Chain Call Prices')
 plt.xlabel('Strike Price')
-plt.ylabel('Price, $')
+plt.ylabel('Calls Prices, $')
 ## Make a legend
 plt.legend(loc='best')
 ## tight_layout makes everything fit nicely in the plot
@@ -195,40 +228,15 @@ plt.tight_layout()
 plt.savefig(ticker+'call_prices.png')
 #
 plt.figure()
-plt.plot(df_calls.Strike,df_calls.Ask,'vm',label='Put Ask')
-plt.plot(df_calls.Strike,df_calls.Bid,'^m',label='Put Bid')
-plt.title('Date: Option Chain Put Prices')
+plt.plot(df_calls.strike,df_calls.ask,'vm',label='Put Ask',markeredgecolor='m')
+plt.plot(df_calls.strike,df_calls.bid,'^m',label='Put Bid',markeredgecolor='m')
+plt.title(dexp.strftime("%Y %b %d") +' Expiry Option Chain Put Prices')
 plt.xlabel('Strike Price')
-plt.ylabel('Price, $')
+plt.ylabel('Puts Prices, $')
 ## Make a legend
 plt.legend(loc='best')
 ## tight_layout makes everything fit nicely in the plot
 plt.tight_layout()
-#plt.savefig('put_prices.png')
+plt.savefig(ticker+'put_prices.png')
 
 
-g=np.zeros((len(df_calls)))
-delta=df_calls.Strike[1]-df_calls.Strike[0]
-for i in range(1,len(df_calls)-1):
-    #g[i]=np.exp(0.02*1/365)*(
-    #        option_chain.Lastc[i+1]
-    #        -2*option_chain.Lastc[i]
-    #        +option_chain.Lastc[i-1])/delta**2
-	
-	## my bumbling attempt to handle non-uniform delta size; have to fix 
-	## this somehow, maybe with interpolation?
-	#delta[i]=df_calls.Strike[
-    g[i]=np.exp(y_annual)*(
-            (df_calls.Ask[i+1]+df_calls.Bid[i+1])/2
-            -(df_calls.Ask[i]+df_calls.Bid[i])
-            +(df_calls.Ask[i-1]+df_calls.Ask[i-1])/2)/delta**2
-
-plt.plot(df_calls.Strike,g,'.k');plt.show()
-plt.title('Date: Implied Distribution')
-plt.xlabel('Strike Price')
-plt.ylabel('Implied Distribution')
-## Make a legend
-plt.legend(loc='best')
-## tight_layout makes everything fit nicely in the plot
-plt.tight_layout()
-#plt.savefig('implied_distribution.png')
