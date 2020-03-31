@@ -52,6 +52,31 @@ def yahoo_csv_reader(filename,ticker):
 	#df=df.rename(columns={'Date':'date'})
 	df=df.set_index('Date')
 	df=df[df.columns].apply(pd.to_numeric,errors='coerce')
+	
+	## If you want to read an option chain, saved as a json:
+	#bs_json=pd.io.json.read_json(filename+'.txt')
+	#strikes=bs_json['optionChain']['result'][0][entries[2]]
+	#quote=bs_json['optionChain']['result'][0][entries[4]]
+	## could also use midpoint of bid ask?
+	#spot_price=quote['regularMarketPrice']
+	## this is the latest market time, which may not correspond to the time	
+	## when this function is run (i.e., if you run the function when market
+	## is closed, you will the last market time of the underlying
+	#market_time=bs_json['optionChain']['result'][0]['quote'][
+	#	'regularMarketTime']
+	## ready to extract the option chain data.
+	#option_chain=bs_json['optionChain']['result'][0][entries[5]]
+	## these are lists of dictionaries!
+	#puts_list=option_chain[0]['puts']
+	#calls_list=option_chain[0]['calls']
+	## is this even needed?
+	#exp_date=option_chain[0]['expirationDate']
+	## convert these lists of dictionaries into a dictionary of lists?
+	#puts_dict = reduce(lambda d, src: d.update(src) or d, dicts, {})
+	## making the dataframes is as simple as this.
+	#df_calls=pd.DataFrame(calls_list)
+	#df_puts=pd.DataFrame(puts_list)
+
 
 	## return the data as a data frame with the chosen format
 	return df
