@@ -1,5 +1,5 @@
 """
-Created on Saturday March 31 2020
+Created on Tuesday March 31 2020
 
 @author: Jeffrey J. Walker
 
@@ -197,9 +197,14 @@ gp=gpnew/const
 ## probability of the asset to be between two price limits, using interpolated
 ## distributionfunction
 #k1=2450
+#k1_ask=df_puts.ask[np.abs(df_puts.strike-k1)==np.min(np.abs(df_puts.strike-k1))].values
 #k2=2550
 ## k1 with an offset; what the strike price has to be to break even?
-#k1_adj=k1-df_puts.ask[df_puts.strike
+## can also have a desired profit? dollar amount or multiple?
+#dprofit=1000.0/100
+## version using multiple:
+#dprofit=10*k1_ask
+#k1_adj=k1-dprofit-df_puts.ask[np.abs(df_puts.strike-k1)==np.min(np.abs(df_puts.strike-k1))].values
 #prob=np.trapz(gp[(xptemp>=k1)&(xptemp<=k2)],
 #	xptemp[(xptemp>=k1)&(xptemp<=k2)])
 ## probability of the asset to be below some price limit:
@@ -216,7 +221,7 @@ plt.subplot(211)
 title=('IV for Underlying: '+ticker+'='+str(St)+', retrieved:'+
 	dnow.strftime('%Y-%b-%d %H:%M')+', '+
 	dexp.strftime('%Y-%b-%d')+' Expiry')
-plt.title(title)
+#plt.title(title)
 plt.plot(df_calls.strike,100*df_calls.impliedVolatility,'.c',label=ticker+
 	' calls, raw data')
 plt.plot(df_puts.strike,100*df_puts.impliedVolatility,'.m',label=ticker+
