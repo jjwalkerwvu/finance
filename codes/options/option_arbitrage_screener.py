@@ -28,6 +28,8 @@ import sys
 ## Be sure that you use a valid ticker symbol!
 ## Indices have a '^' before their letter symbols!
 ticker='^SPX'
+## SPX has no underlying, so if you want to go long or short spx, need to use
+## futures contracts!
 
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!

@@ -26,11 +26,13 @@ import sys
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Be sure that you use a valid ticker symbol!
 ## Indices have a '^' before their letter symbols!
-ticker='^SPX'
+#ticker='^SPX'
 #ticker='SPY'
 #ticker='TSLA'
 #ticker='^VIX'
 #ticker='^DJX'
+#ticker='UBER'
+ticker='AAPL'
 
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!
@@ -49,9 +51,12 @@ from bs_analytical_solver import bs_analytical_solver
 path='/home/jjwalker/Desktop/finance/data/options'
 
 ## Now call the option chain scraper
-## call the next calendar month options by default
+## call the next calendar month, 3rd friday options by default
 t_plus_30=pd.to_datetime('today').now()+timedelta(days=30)
 input_date=time.mktime(t_plus_30.timetuple())
+## call the next calendar month, 3rd friday options by default since these have
+## greater liquidity
+#nearest_monthly=pd.to_datetime('today').now()+timedelta(days=30)
 ## Ready to call the option chain scraper/reader
 dnow,dexp,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
 
