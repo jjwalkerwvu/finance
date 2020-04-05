@@ -66,11 +66,16 @@ y_annual=0.01
 nshares=100
 
 ## only include data points where there is a bid and an ask
+index_arr=np.array(df_puts.index[((df_puts.bid!=0)&(df_puts.ask!=0))])
 xptemp=np.array(df_puts.strike[((df_puts.bid!=0)&(df_puts.ask!=0))])
 yptemp=np.array((df_puts.ask[((df_puts.bid!=0)&(df_puts.ask!=0))]))
 ivp_temp=np.array(df_puts.impliedVolatility[((df_puts.bid!=0)&(df_puts.ask!=0))])
 delta_temp=np.zeros(len(xptemp))
 gamma_temp=np.zeros(len(xptemp))
+vega_temp=np.zeros(len(xptemp))
+theta_temp=np.zeros(len(xptemp))
+rho_temp=np.zeros(len(xptemp))
+g=np.zeros(len(xptemp))
 
 ## Simplest hedge is hedging delta; try doing just this before trying other
 ## things.
@@ -78,16 +83,33 @@ gamma_temp=np.zeros(len(xptemp))
 for i in range(1,len(xptemp)-1):
 	solution,second_deriv,delta,gamma,vega,theta,rho=bs_analytical_solver(
 		S=St,K=xptemp[i],r=y_annual,T=texp/365,sigma=ivp_temp[i],o_type='p')
-	gamma_temp[i]=gamma	
+		
+	g[i]=second_deriv
 	delta_temp[i]=delta
+	gamma_temp[i]=gamma
+	vega_temp[i]=vega
+	theta_temp[i]=theta
+	rho_temp[i]=rho
+	
 
 ## The optimization requires Integer Programming.
 ## Canonical Form:
-## Maximize C^{T}*X
+## Maximize C^{T}*X (minimizing f(x) is the same as maximizing -f(x))
 ## Subject to
 ## A*X>=B, where X>=0 and is restricted to natural numbers
 
 ## Make dataframe, then save to csv to handle with octave or R
+
+#df=df_puts.assign(valid_strikes=xptemp,put_prices=yptemp,iv=ivp_temp,
+#		delta=delta_temp,gamma=gamma_temp)
+
+df=pd.DataFrame({'original_index':index_arr,'strike':xptemp,'price':yptemp,
+	'iv':ivp_temp,'ipdf':g,'delta':delta_temp,'gamma':gamma_temp,
+	'vega':vega_temp,'theta':theta_temp,'rho':'rho_temp'})
+
+#df=df.set_index('original_index')
+filename='hedge_test.csv'
+df.to_csv(filename)
 
 
 
