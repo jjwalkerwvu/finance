@@ -63,7 +63,8 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	## obtain. Could possibly use as an input, but it might be nice to check
 	## the device's location to obtain automatically with this function
 	timezone='CET'
-	## target directory? Maybe make this an input to the function?
+	## target directory? Currently an input to the function, but maybe have 
+	## some default if this is not specified by the user.
 	#target_dir='/home/jjwalker/Desktop/finance/data/options'
 	target_dir=write_path
 
@@ -72,6 +73,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	## found through trial and error, hopefully all yahoo option chains 
 	## look like this
 	entries=bs_json['optionChain']['result'][0].keys()
+	## We should keep the expiry dates, maybe output the array of expiry dates
 	expiry_dates=bs_json['optionChain']['result'][0][entries[1]]
 	## now that all of the expiry dates are known, get the closest date to 
 	## the user input! Then make another query.
@@ -95,7 +97,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 		if expiry==closest_date:
 			print(pd.Timestamp(datetime.utcfromtimestamp(expiry)
 				).tz_localize('US/Eastern').strftime("%Y %b %d")+
-				"<--Closest Expiry")
+				"<--Closest Expiry to Input Date")
 		else:
 			print(pd.Timestamp(datetime.utcfromtimestamp(expiry)
 				).tz_localize('US/Eastern').strftime("%Y %b %d"))
@@ -125,6 +127,9 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	if not os.path.exists(path):
 		os.makedirs(path)
 	
+	## If there is going to be a loop over expiry dates to get volatility term
+	## structure, this would be the place to put it.
+
 	## convert tnow, the time at which the data was retrieved, into a string
 	## for a filename.
 	tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
@@ -187,6 +192,6 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	
 	
 	
-	return tnow,exp_date,spot_price,df_calls,df_puts
+	return tnow,exp_date,expiry_dates,spot_price,df_calls,df_puts
 
 
