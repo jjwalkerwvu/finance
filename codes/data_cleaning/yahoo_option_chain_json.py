@@ -43,10 +43,6 @@ import time
 ## import what we need to automatically write output to a folder
 import os
 import sys
-## import for webscraping
-#import requests
-#import lxml.html as lh
-#import re
 import json
 #from json import loads
 ## import this library to save the file directly to json format
@@ -59,7 +55,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	## the closest expiration date to the user-input date.
 	url_string='https://query1.finance.yahoo.com/v7/finance/options/'+ticker
 	
-	#r = requests.get(url_string)
+	
 	## need the date and time if we want to write to a csv file.
 	## Get this immediately after pinging the website
 	tnow=pd.to_datetime('today').now()
@@ -89,19 +85,23 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	## the actual time of day when the option expires; try 4pm EDT, although  
 	## the holder of the option has until 5pm to exercise the option, 5:30 pm 
 	## according to the nasdaq? Double check!
-	## exp_time variable should eventuall go to the top of this script?
-	#exp_time=' 16' ## 4pm?
-	#exp_time='16:00'
+	## exp_time variable should eventually go to the top of this script?
 	exp_date=datetime.utcfromtimestamp(closest_date)+timedelta(hours=16)
 	## modify the original url string to include the nearest date in the query
 	url_string=url_string+'?date='+str(int(closest_date[0]))
+	## Can/should I print out all of the expiration dates?
+	print("Expiry Dates:\n")
+	for expiry in expiry_dates:	
+		if expiry==closest_date:
+			print(pd.Timestamp(datetime.utcfromtimestamp(expiry)
+				).tz_localize('US/Eastern').strftime("%Y %b %d")+
+				"<--Closest Expiry")
+		else:
+			print(pd.Timestamp(datetime.utcfromtimestamp(expiry)
+				).tz_localize('US/Eastern').strftime("%Y %b %d"))
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## Now, perform the necessary work to write to file.
-	## Maybe we write the json to file first, then read it so we only ping
-	## yahoo website twice with this function?
-	## get the time right now, as the code is run.
-	#tnow=pd.to_datetime('today').now()
-	## convert local time to utc
+	## convert local time to utc.
 	tnow.tz_localize(timezone).tz_convert('utc')
 	## in practice though, we will just assume all times (for stock purposes) 
 	## to be in eastern time, so just convert our local time to that
@@ -143,8 +143,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	#					'Date_of_expiry', 
 	#					exp_date.strftime("%Y-%m-%d %H:%M:%S.%f")]
 
-	## replace colons and periods with underscores if making a file?
-	#date_dt = datetime.datetime.strptime(datetime.now(), '%B %d, %Y, %H')
+	
 	filename=path+'/'+tnow_str+'_'+ticker	
 
 	#df_calls = df_calls.append(date_header_list, ignore_index=True).append(
@@ -157,6 +156,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	## chain can be read the same way as in this function!
 	urllib.urlretrieve(url_string,filename+'.txt')
 	## still have to put tnow into this data object!
+	## Need to insert tnow, exp_date?, spot_price into the dataframe?
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## read the file we have just created!
 	bs_json = pd.io.json.read_json(filename+'.txt')
@@ -185,10 +185,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	df_calls=pd.DataFrame(calls_list)
 	df_puts=pd.DataFrame(puts_list)
 	
-	## convert the relevant string values to numeric; has not appeared to be
-	## necessary with the method used in this function
-	#df_puts[df_puts.columns[2:]]=df_puts[df_puts.columns[2:]].apply(
-	#	pd.to_numeric,errors='coerce')
+	
 	
 	return tnow,exp_date,spot_price,df_calls,df_puts
 
