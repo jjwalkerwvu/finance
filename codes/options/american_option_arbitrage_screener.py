@@ -25,11 +25,8 @@ import time
 import os
 import sys
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Be sure that you use a valid ticker symbol!
-## Indices have a '^' before their letter symbols!
-ticker='^SPX'
-## SPX has no underlying, so if you want to go long or short spx, need to use
-## futures contracts!
+## Be sure that you use a valid ticker symbol, no indices!
+ticker='SPY'
 
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!
@@ -75,8 +72,12 @@ df_join=pd.merge(df_calls,df_puts,how='inner',on='strike',
 		suffixes=('_c', '_p'), copy=True, indicator=False)
 #df_join=df_join.set_index('strike')
 
-## calls and puts must obey:
-## c+K*exp(-rT)=p+S0
+## american calls and puts must obey:
+## (S0-K)<=(c-p)<=(S0-K*exp(-rT))
+
+## check each part:
+df_check=df_join[(St-df_join.strike*np.exp(-y_annual*texp/365)<=
+	(df_join.
 
 ## check for buying left side, selling right side.
 ## In reality you would have to buy the bond as well, which has its own 

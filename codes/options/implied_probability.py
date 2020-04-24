@@ -52,7 +52,7 @@ path='/home/jjwalker/Desktop/finance/data/options'
 t_plus_30=pd.to_datetime('today').now()+timedelta(days=30)
 input_date=time.mktime(t_plus_30.timetuple())
 ## Ready to call the option chain scraper/reader
-dnow,dexp,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
+dnow,dexp,_,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
 
 ## time to expiration, from dnow and dexp, in days:
 texp=(pd.Timestamp(dexp).tz_localize('US/Eastern')-pd.Timestamp(dnow)

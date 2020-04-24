@@ -60,7 +60,7 @@ input_date=time.mktime(t_plus_30.timetuple())
 ## greater liquidity
 #nearest_monthly=pd.to_datetime('today').now()+timedelta(days=30)
 ## Ready to call the option chain scraper/reader
-dnow,dexp,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
+dnow,dexp,exp_dates,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
 
 ## time to expiration, from dnow and dexp, in days:
 texp=(pd.Timestamp(dexp).tz_localize('US/Eastern')-pd.Timestamp(dnow)

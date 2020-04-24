@@ -27,7 +27,8 @@ import sys
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Be sure that you use a valid ticker symbol, no indices!
 ## This will be the stock you are long on.
-ticker='SPY'
+#ticker='SPY'
+ticker='SNAP'
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!
 # insert at 1, 0 is the script path (or '' in REPL)
@@ -45,10 +46,10 @@ from bs_analytical_solver import bs_analytical_solver
 path='/home/jjwalker/Desktop/finance/data/options'
 
 ## pick an appropriate time horizon.
-t_plus_30=pd.to_datetime('today').now()+timedelta(days=42)
+t_plus_30=pd.to_datetime('today').now()+timedelta(days=37)
 input_date=time.mktime(t_plus_30.timetuple())
 ## Ready to call the option chain scraper/reader
-dnow,dexp,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
+dnow,dexp,_,St,df_calls,df_puts=yahoo_option_chain_json(path,ticker,input_date)
 
 ## time to expiration, from dnow and dexp, in days:
 texp=(pd.Timestamp(dexp).tz_localize('US/Eastern')-pd.Timestamp(dnow)
@@ -105,11 +106,16 @@ for i in range(1,len(xptemp)-1):
 
 df=pd.DataFrame({'original_index':index_arr,'strike':xptemp,'price':yptemp,
 	'iv':ivp_temp,'ipdf':g,'delta':delta_temp,'gamma':gamma_temp,
-	'vega':vega_temp,'theta':theta_temp,'rho':'rho_temp'})
+	'vega':vega_temp,'theta':theta_temp,'rho':rho_temp})
 
-#df=df.set_index('original_index')
+df=df.set_index('original_index')
+
+
 filename='hedge_test.csv'
 df.to_csv(filename)
+
+## call an octave program from within python
+#os.system(octave hedging_optimizer.m)
 
 
 
