@@ -29,10 +29,11 @@ import sys
 #ticker='^SPX'
 #ticker='SPY'
 #ticker='TSLA'
-#ticker='^VIX'
+ticker='^VIX'
 #ticker='^DJX'
 #ticker='UBER'
-ticker='AAPL'
+#ticker='AAPL'
+#ticker='SNAP'
 
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!
@@ -52,7 +53,8 @@ path='/home/jjwalker/Desktop/finance/data/options'
 
 ## Now call the option chain scraper
 ## call the next calendar month, 3rd friday options by default
-t_plus_30=pd.to_datetime('today').now()+timedelta(days=30)
+#t_plus_30=pd.to_datetime('today').now()+timedelta(days=40)
+t_plus_30=pd.to_datetime('today').now()+timedelta(days=4)
 input_date=time.mktime(t_plus_30.timetuple())
 ## call the next calendar month, 3rd friday options by default since these have
 ## greater liquidity
@@ -232,10 +234,12 @@ plt.plot(df_calls.strike,100*df_calls.impliedVolatility,'.c',label=ticker+
 plt.plot(df_puts.strike,100*df_puts.impliedVolatility,'.m',label=ticker+
 	' puts, raw data')
 ## plot little circles corresponding to iv minimum?
-plt.plot(xtemp[iv_temp==np.min(iv_temp)],100*np.min(iv_temp),'ok',
-	markerfacecolor="None",markeredgecolor='k',label='Min IV, calls')
-plt.plot(xptemp[ivp_temp==np.min(ivp_temp)],100*np.min(ivp_temp),'ok',
-	markerfacecolor="None",markeredgecolor='k',label='Min IV, puts')
+## there may be multiple values of the same iv minimum
+#if length(np.min(iv_temp))==1:
+#plt.plot(xtemp[iv_temp==np.min(iv_temp)],100*np.min(iv_temp),'ok',
+#	markerfacecolor="None",markeredgecolor='k',label='Min IV, calls')
+#plt.plot(xptemp[ivp_temp==np.min(ivp_temp)],100*np.min(ivp_temp),'ok',
+#	markerfacecolor="None",markeredgecolor='k',label='Min IV, puts')
 #print(str(xptemp[ivp_temp==np.min(ivp_temp)]))
 #print(str(100*np.min(ivp_temp)))
 plt.ylabel('Implied Volatility, %')
@@ -251,8 +255,23 @@ plt.tight_layout()
 plt.subplot(212)
 #title=('Implied Probability Distribution')
 #plt.title(title)
+## Not sure if I should plot the computed distribution, or the normalized 
+## distribution?
 plt.plot(xnew,gnew,'-c',label=ticker+' calls, interpolated')
 plt.plot(xpnew,gpnew,'-m',label=ticker+' puts, interpolated')
+## print, or find suitable plot to show the implied expected value of the 
+## underlying
+## use g and gp, or gnew and gpnew?
+Stc_exp=np.trapz(gnew*xnew,xnew)
+gc_exp=gnew[np.abs(Stc_exp-xnew)==np.min(np.abs(Stc_exp-xnew))]
+#print(str(gc_exp))
+## get nearest g value to the expect value of the security at t=expiration
+Stp_exp=np.trapz(gpnew*xpnew,xpnew)
+gp_exp=gpnew[np.abs(Stp_exp-xpnew)==np.min(np.abs(Stp_exp-xpnew))]
+plt.plot(Stc_exp,gc_exp,'oc',markerfacecolor="None",markeredgecolor='c',
+	label='E['+ticker+']={:.2f} from Calls'.format(Stc_exp))
+plt.plot(Stp_exp,gp_exp,'om',markerfacecolor="None",markeredgecolor='m',
+	label='E['+ticker+']={:.2f} from Puts'.format(Stp_exp))
 plt.ylabel('Implied Probability Density')
 plt.xlabel('Strike Price')
 plt.legend(loc='best')
@@ -267,6 +286,7 @@ if not os.path.exists(write_path):
 plt.savefig(write_path+'/'+ticker+'_at_time_'+dnow.strftime('%Y_%b_%d_%H_%M')+
 	'_exp_'+dexp.strftime('%Y_%b_%d')+'_iv_snapshot.png')
 
+## Make plots for theta, gamma, vega?? Fan plots for volatility term structure?
 
 #plt.plot(df_calls.strike,df_calls.lastPrice,'dc',markeredgecolor='c')
 #plt.plot(df_puts.strike,df_puts.lastPrice,'sm',markeredgecolor='m')
