@@ -5,15 +5,20 @@ Created on Saturday March 21 2020
 
     yahoo_option_chain_json.py
         This function obtains the options chain for a particular stock symbol.
-        Turn this into a function later?
 		
 		This seems to only fetch the nearest expiration date options chain, 
 		can we modify this and use a function input to find nearest calendar
-		date expiration to the input date?
+		date expiration to the input date? Perhaps this can be built into a
+		class method if this function morphs into a class.
 
 		Should the risk-free rate be scraped from some location when this 
 		function runs, or should that functionality be given to the script
 		that calls this function?
+		Maybe a reasonable method is to find the yield to maturity for a zero
+		coupon bond with a maturity date closest to the expiration date of the
+		option?
+		A simpler, but less accurate alternative would be to just use the 
+		yield curve
 
 	Inputs
 		path		- 	the target directory, where the option chain will be 
@@ -80,10 +85,15 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	## closest date is whichever entry in expiry date has the smallest 
 	## difference to the user input date.
 	exp_array=np.array(expiry_dates)*1.0
-	## closest date in unix time. This ends up being a float.
-	## Convert to datetime later
-	closest_date=exp_array[
+	## Now the procedure to convert closest date to unix time. 
+	## This ends up being a float using my method.
+	## Convert to datetime later.
+	## Error checking, in case an input date has not been given:
+	if 'input_date' in locals():
+		closest_date=exp_array[
 			((exp_array-input_date)**2)==np.min((exp_array-input_date)**2)]
+	else:
+		closest_date=exp_array[0]
 	## the actual time of day when the option expires; try 4pm EDT, although  
 	## the holder of the option has until 5pm to exercise the option, 5:30 pm 
 	## according to the nasdaq? Double check!
@@ -149,7 +159,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	#					exp_date.strftime("%Y-%m-%d %H:%M:%S.%f")]
 
 	
-	filename=path+'/'+tnow_str+'_'+ticker	
+	filename=path+'/'+tnow_str+'_'+ticker+'_'+exp_date.strftime("%Y_%m_%d")+'_exp'	
 
 	#df_calls = df_calls.append(date_header_list, ignore_index=True).append(
 	#	df_calls, ignore_index=True)
@@ -191,7 +201,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	df_puts=pd.DataFrame(puts_list)
 	
 	
-	
+	## Don't forget, exp_date is output as a unix time
 	return tnow,exp_date,expiry_dates,spot_price,df_calls,df_puts
 
 
