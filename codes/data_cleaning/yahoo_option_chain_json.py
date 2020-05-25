@@ -29,6 +29,10 @@ Created on Saturday March 21 2020
 						Indices include '^' in front of the letters.	
 		input_date	- 	user inputs a date? If not given, use the nearest 
 						expiry date? Should this be unix or datetime format?
+						Right now I use unix time format, but maybe do a check
+						and convert to unix format if input_date is not in
+						unix format.
+						Can I make this function accept multiple input dates?
 		
 		
 		Do I need an input for the timezone where the function is used?
@@ -111,6 +115,19 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 		else:
 			print(pd.Timestamp(datetime.utcfromtimestamp(expiry)
 				).tz_localize('US/Eastern').strftime("%Y %b %d"))
+
+	## some commented lines here describe how to append multiple expiration
+	## dates to one file
+	#temp=bs_json['optionChain']['result'][0]['options']
+	## replace bs_json_alt with whatever the updated option chain json is
+	## called
+	#temp.append(bs_json_alt['optionChain']['result'][0]['options'])
+	## and now:
+	## bs_json['optionChain']['result'][0]['options'][0] is the first chain;
+	## bs_json['optionChain']['result'][0]['options'][1] is the appended chain
+	## len(bs_json['optionChain']['result'][0]['options']) tells you how many
+	## chains there are in total!
+
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## Now, perform the necessary work to write to file.
 	## convert local time to utc.
@@ -172,6 +189,9 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	urllib.urlretrieve(url_string,filename+'.txt')
 	## still have to put tnow into this data object!
 	## Need to insert tnow, exp_date?, spot_price into the dataframe?
+	## urllib.urlretrieve works great, but for multiple expiration dates, when
+	## contcatenation has been done, use something like this:
+	#bs_json.to_json(path+'/'+tnow_str+'_'+ticker+'_full_chain'+'.txt')
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## read the file we have just created!
 	bs_json = pd.io.json.read_json(filename+'.txt')
@@ -188,6 +208,8 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	
 	## ready to extract the option chain data.
 	option_chain=bs_json['optionChain']['result'][0][entries[5]]
+	## This should also work:
+	#option_chain=bs_json['optionChain']['result'][0]['options']
 	## these are lists of dictionaries!
 	puts_list=option_chain[0]['puts']
 	calls_list=option_chain[0]['calls']
