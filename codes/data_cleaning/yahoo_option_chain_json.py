@@ -188,13 +188,16 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	## chain can be read the same way as in this function!
 	urllib.urlretrieve(url_string,filename+'.txt')
 	## still have to put tnow into this data object!
-	## Need to insert tnow, exp_date?, spot_price into the dataframe?
+	## Need to insert tnow into the dataframe?
 	## urllib.urlretrieve works great, but for multiple expiration dates, when
 	## contcatenation has been done, use something like this:
 	#bs_json.to_json(path+'/'+tnow_str+'_'+ticker+'_full_chain'+'.txt')
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## read the file we have just created!
 	bs_json = pd.io.json.read_json(filename+'.txt')
+	## how to read the file if it was written with the .to_json pd method?
+	#bs_json=pd.read_json(path+'/'+tnow_str+'_'+ticker+'_full_chain'+'.txt')
+
 	
 	strikes=bs_json['optionChain']['result'][0][entries[2]]
 	quote=bs_json['optionChain']['result'][0][entries[4]]
@@ -212,6 +215,8 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	#option_chain=bs_json['optionChain']['result'][0]['options']
 	## these are lists of dictionaries!
 	puts_list=option_chain[0]['puts']
+	## model for json with multiple expiration dates?
+	#bs_json['optionChain']['result'][0]['options'][0]['puts']
 	calls_list=option_chain[0]['calls']
 	## is this even needed?
 	#exp_date=option_chain[0]['expirationDate']
@@ -221,6 +226,8 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	## making the dataframes is as simple as this.
 	df_calls=pd.DataFrame(calls_list)
 	df_puts=pd.DataFrame(puts_list)
+
+	
 	
 	
 	## Don't forget, exp_date is output as a unix time
