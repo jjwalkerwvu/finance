@@ -23,26 +23,46 @@ import scipy.stats as stats
 from scipy.special import erf
 from scipy.special import erfc
 
+# insert at 1, 0 is the script path (or '' in REPL)
+sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
+from yahoo_csv_reader import yahoo_csv_reader
+
 ## path where the various data files are located; may need to change
-path='/home/jjwalker/Desktop/finance/earnings_predictor/'
+path='/home/jjwalker/Desktop/finance/data/stocks/'
 ## Tickers should be in all caps, but right now I have files saved in lower
 ## case.
-ticker='spx'
+ticker='^SPX'
+filename=path+ticker
 ## might be good to put nbin variable, the divisor of the total number of
 ## observation periods (typically days)
 nbin=1
 
 ## load up stock data:
-price=pd.read_csv(path+ticker+'_price.csv',header=0)
-price['Date'] = pd.to_datetime(price.Date,infer_datetime_format=True)
-price=price.rename(columns={'Date':'date'})
-price=price.set_index('date')
+#price=pd.read_csv(path+ticker+'.csv',header=0)
+## need to convert each to numeric?
+## Assuming the files came from yahoo finance, the lines below should 
+## work. The first column is for the date, and the others are floating
+## values
+#price[price.columns[1:]]=price[price.columns[1:]].apply(
+#	pd.to_numeric,errors='coerce')
+#price['Date'] = pd.to_datetime(price.Date,infer_datetime_format=True)
+#price=price.rename(columns={'Date':'date'})
+#price=price.set_index('date')
 ## need to set values to numeric 
+price=yahoo_csv_reader(filename,ticker)
 
 ## get daily returns; these can be the open to close, but better might be
 ## previous close to current close.
 ## These are given as percentage gain/loss
 daily_return=(price.Close.values[1:]-price.Close.values[:-1])/(price.Close.values[:-1])*100
+## better than binning: obtain the cdf, then get the pdf?
+#daily_return.sort()
+#cdf=[]
+#for change in daily_return:
+#	cdf.append(1.0*np.sum(daily_return<=change)/len(daily_return))
+#pdf=np.zeros(len(cdf))
+#for i in range(1,len(cdf)-1):
+#	pdf[i]=(cdf[i+1]-cdf[i-1])/(daily_return[i+1]-daily_return[i-1])
 
 ## construct dataframe for the daily return to include the dates?
 
@@ -70,6 +90,8 @@ x=np.zeros(M)
 
 
 ## simple loop; just count the number of measurements between boundries of bin
+## Can we use np.digitize?
+#pdf=np.digitize()
 for i in range(1,M-1):
 	pdf[i]=1.0*np.sum((sorted_return>=(return_min+(i-1)*dreturn))&(sorted_return<(return_min+i*dreturn)))/N
 	## We also have to approximate the daily return that accompanies the pdf;
