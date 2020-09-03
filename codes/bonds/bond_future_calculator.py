@@ -30,8 +30,11 @@ Created on Tuesday March 10
 		are quarterly?)
 	3.) Price a given %-coupon bond with the appropriate duration at 6% yield
 		to maturity
-	EXAMPLE CONVERSION FACTOR:
-	bond_price(p0=100,r=
+	EXAMPLE CONVERSION FACTOR FOR /ZN:
+	A bond maturing on August 2024, used for December 2017 futures contract
+	with 2-3/8% coupon
+	Generally, a bond that is near 6.5 years is best for the futures contract
+	conv_fact=bond_price(p0=1,r=0.02375,y=0.06,n=6.5)
 """
 import pandas as pd
 import numpy as np
@@ -41,7 +44,7 @@ import sys
 
 ## insert the path corresponding to bond_price; we will need this function!
 # insert at 1, 0 is the script path (or '' in REPL)
-sys.path.insert(1, '/home/jjwalker/Desktop/finance/bonds')
+sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/bonds')
 
 ## make sure you are in the correct directory!
 from bond_price import bond_price

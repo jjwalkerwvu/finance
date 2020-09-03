@@ -40,7 +40,7 @@ from bond_price import bond_price
 import matplotlib.pyplot as plt
 
 ## path where the various data files are located.
-path='/home/jjwalker/Desktop/finance/IRTCM_csv_2/data/'
+path='/home/jjwalker/Desktop/finance/data/bonds/IRTCM_csv_2/data/'
 
 ## bond details:
 r=0.0	# zero-coupon

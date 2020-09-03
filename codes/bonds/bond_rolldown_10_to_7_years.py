@@ -87,9 +87,11 @@ portfolio.value[0]=invest
 ## construct a new dataframe with the date_array as the index and fill in each
 ## entry with the year's portfolio value
 
+#nb=np.zeros((len(date_array)))
+
 ## find the profit and calculate new investment for 1984, 1987, etc.
 for date in date_array[3::3]:
-	print(date)
+	#print(date)
 	p1=n1*bond_yield.price7.values[bond_yield.index==date][0]
 	n1=p1/bond_yield.price10.values[bond_yield.index==date][0]
 	portfolio.value[portfolio.index==date]=p1
