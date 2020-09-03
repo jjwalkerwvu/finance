@@ -26,14 +26,20 @@ import sys
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Be sure that you use a valid ticker symbol!
 ## Indices have a '^' before their letter symbols!
-#ticker='^SPX'
+ticker='^SPX'
 #ticker='SPY'
 #ticker='TSLA'
-ticker='^VIX'
+#ticker='^VIX'
 #ticker='^DJX'
 #ticker='UBER'
 #ticker='AAPL'
 #ticker='SNAP'
+#ticker='SLV'
+#ticker='SIL'
+#ticker='UUP'
+#ticker='TLT'
+## days until expiry
+dte=135
 
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!
@@ -51,10 +57,15 @@ from bs_analytical_solver import bs_analytical_solver
 ## DO NOT NEED '/' AT THE END!
 path='/home/jjwalker/Desktop/finance/data/options'
 
+## Want to execute in python shell? then use:
+#execfile(path+"iv_snapshot.py")
+## In python 3:
+#exec(open(path+"iv_snapshot.py").read())
+
 ## Now call the option chain scraper
 ## call the next calendar month, 3rd friday options by default
 #t_plus_30=pd.to_datetime('today').now()+timedelta(days=40)
-t_plus_30=pd.to_datetime('today').now()+timedelta(days=4)
+t_plus_30=pd.to_datetime('today').now()+timedelta(days=dte)
 input_date=time.mktime(t_plus_30.timetuple())
 ## call the next calendar month, 3rd friday options by default since these have
 ## greater liquidity
@@ -77,12 +88,21 @@ y_annual=0.003
 ## get a less noisy second derivative of the call/put prices?
 ## perhaps some kind of interpolation - with a constant step size?
 ## The standard treatment is to use SABR regression on the implied volatility
+## (or ARCH/GARCH)
 
 ## only include data points where there is volume, and a bid and an ask
+## Maybe we can relax the ~np.isnan(df_calls.volume) requirement?
+## Also, reject points where implied volatility is 0?
 #plt.plot(df_calls.strike[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))],df_calls.impliedVolatility[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))],'.k');plt.show()
-xtemp=np.array(df_calls.strike[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))])
-ytemp=np.array((df_calls.ask[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))]+df_calls.bid[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))])/2.0)
-iv_temp=np.array(df_calls.impliedVolatility[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))])
+#xtemp=np.array(df_calls.strike[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))])
+#
+xtemp=np.array(df_calls.strike[(df_calls.impliedVolatility>0)&(~np.isnan(df_calls.volume))&((df_calls.bid!=0)&(df_calls.ask!=0))])
+#ytemp=np.array((df_calls.ask[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))]+df_calls.bid[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))])/2.0)
+#
+ytemp=np.array((df_calls.ask[(df_calls.impliedVolatility>0)&(~np.isnan(df_calls.volume))&((df_calls.bid!=0)&(df_calls.ask!=0))]+df_calls.bid[(df_calls.impliedVolatility>0)&(~np.isnan(df_calls.volume))&((df_calls.bid!=0)&(df_calls.ask!=0))])/2.0)
+#
+#iv_temp=np.array(df_calls.impliedVolatility[~np.isnan(df_calls.volume)&((df_calls.bid!=0)&(df_calls.ask!=0))])
+iv_temp=np.array(df_calls.impliedVolatility[(df_calls.impliedVolatility>0)&(~np.isnan(df_calls.volume))&((df_calls.bid!=0)&(df_calls.ask!=0))])
 
 ## duplicate with puts
 ## only include data points where there is volume, and a bid and an ask
@@ -174,8 +194,8 @@ for i in range(1,len(gnew)-1):
 	gnew[i]=np.exp(y_annual*texp/365)*second_deriv
 
 ## you have to renormalize the implied distribution!
-const=np.trapz(gnew,xnew)
-g=gnew/const        
+cconst=np.trapz(gnew,xnew)
+g=gnew/cconst        
 #plt.plot(xnew,gnew,'.k');plt.show()
 
 ## for puts:
@@ -192,8 +212,8 @@ for i in range(1,len(gpnew)-1):
 	gpnew[i]=np.exp(y_annual*texp/365)*second_deriv
 
 ## you have to renormalize the implied distribution!
-const=np.trapz(gpnew,xpnew)
-gp=gpnew/const        
+pconst=np.trapz(gpnew,xpnew)
+gp=gpnew/pconst        
 
 ## Let's test with a log normal distribution?
 #xnew=np.linspace(-5,5,1e3)
@@ -202,7 +222,7 @@ gp=gpnew/const
 #ynew=(1/sigma/np.sqrt(2*np.pi))*np.exp(-0.5*((xnew-mu)/sigma)**2)
 
 ## probability of the asset to be between two price limits, using interpolated
-## distributionfunction
+## distribution function
 #k1=2450
 #k1_ask=df_puts.ask[np.abs(df_puts.strike-k1)==np.min(np.abs(df_puts.strike-k1))].values
 #k2=2550
@@ -219,16 +239,17 @@ gp=gpnew/const
 ## probability of the asset to be greater the spot price
 #prob=np.trapz(gp[(xpnew>=St)&(xptemp<=np.max(xpnew))],
 #	xpnew[(xpnew>=St)&(xpnew<=np.max(xpnew))])
+#print('Probability for '+ticker+' to be less than '+str(k1)+': '+str(prob*100)+'% by ' +dexp.strftime('%Y-%b-%d'))
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Some plots for now; put into a separate script/function later?
 ## plot the last price and retrieved time!
 plt.figure()
 plt.subplot(211)
-title=('IV for Underlying: '+ticker+'='+str(St)+', retrieved:'+
-	dnow.strftime('%Y-%b-%d %H:%M')+', '+
+title=('IV for: '+ticker+'='+str(St)+', retrieved:'+
+	dnow.strftime('%Y-%b-%d %H:%M')+' EST, '+
 	dexp.strftime('%Y-%b-%d')+' Expiry')
-#plt.title(title)
+plt.title(title)
 plt.plot(df_calls.strike,100*df_calls.impliedVolatility,'.c',label=ticker+
 	' calls, raw data')
 plt.plot(df_puts.strike,100*df_puts.impliedVolatility,'.m',label=ticker+
@@ -257,17 +278,22 @@ plt.subplot(212)
 #plt.title(title)
 ## Not sure if I should plot the computed distribution, or the normalized 
 ## distribution?
-plt.plot(xnew,gnew,'-c',label=ticker+' calls, interpolated')
-plt.plot(xpnew,gpnew,'-m',label=ticker+' puts, interpolated')
+## I think normalized is better, but maybe plot the computed distribution
+## as well.
+#plt.plot(xnew,gnew,'-c',label=ticker+' calls, interpolated')
+#plt.plot(xpnew,gpnew,'-m',label=ticker+' puts, interpolated')
+plt.plot(xnew,g,'-c',label=ticker+' calls, interp., norm.')
+plt.plot(xpnew,gp,'-m',label=ticker+' puts, interp., norm.')
 ## print, or find suitable plot to show the implied expected value of the 
 ## underlying
 ## use g and gp, or gnew and gpnew?
-Stc_exp=np.trapz(gnew*xnew,xnew)
-gc_exp=gnew[np.abs(Stc_exp-xnew)==np.min(np.abs(Stc_exp-xnew))]
+## Looks like g and gp give better results.
+Stc_exp=np.trapz(g*xnew,xnew)
+gc_exp=g[np.abs(Stc_exp-xnew)==np.min(np.abs(Stc_exp-xnew))]
 #print(str(gc_exp))
-## get nearest g value to the expect value of the security at t=expiration
-Stp_exp=np.trapz(gpnew*xpnew,xpnew)
-gp_exp=gpnew[np.abs(Stp_exp-xpnew)==np.min(np.abs(Stp_exp-xpnew))]
+## get nearest g value to the expectation value of the security at t=expiration
+Stp_exp=np.trapz(gp*xpnew,xpnew)
+gp_exp=gp[np.abs(Stp_exp-xpnew)==np.min(np.abs(Stp_exp-xpnew))]
 plt.plot(Stc_exp,gc_exp,'oc',markerfacecolor="None",markeredgecolor='c',
 	label='E['+ticker+']={:.2f} from Calls'.format(Stc_exp))
 plt.plot(Stp_exp,gp_exp,'om',markerfacecolor="None",markeredgecolor='m',
@@ -285,9 +311,51 @@ if not os.path.exists(write_path):
 	os.makedirs(write_path)
 plt.savefig(write_path+'/'+ticker+'_at_time_'+dnow.strftime('%Y_%b_%d_%H_%M')+
 	'_exp_'+dexp.strftime('%Y_%b_%d')+'_iv_snapshot.png')
-
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Make plots for theta, gamma, vega?? Fan plots for volatility term structure?
 
+## bubble plot with option put/call volume, put/call ratio
+plt.figure()
+plt.subplot(211)
+title=('Option Volume for: '+ticker+'='+str(St)+', retrieved:'+
+	dnow.strftime('%Y-%b-%d %H:%M')+' EST, '+
+	dexp.strftime('%Y-%b-%d')+' Expiry')
+plt.title(title)
+## alpha adds transparency
+## have to do an inner join for df_puts.volume/df_calls.volume?
+## This has not been done properly?
+put_call=df_calls.join(df_puts,how='inner',lsuffix='_c',rsuffix='_p')
+print(put_call.columns)
+plt.scatter(put_call.index,put_call.volume_p/put_call.volume_c,s=put_call.volume_c+put_call.volume_p,alpha=0.5,label=ticker+
+	' calls, raw data')
+#plt.scatter(df_puts.strike,df_puts.ask,s=df_puts.volume,alpha=0.5,label=ticker+
+#	' calls, raw data')
+## adjust
+plt.ylabel('Put/Call Volume Ratio')
+plt.xlabel('Strike Price')
+plt.legend(loc='best')
+plt.tight_layout()
+## Save this plot
+plt.savefig(write_path+'/'+ticker+'_at_time_'+dnow.strftime('%Y_%b_%d_%H_%M')+
+	'_exp_'+dexp.strftime('%Y_%b_%d')+'_put_call_snapshot.png')
+
+## 
+plt.figure()
+title=('Option Vega for: '+ticker+'='+str(St)+', retrieved:'+
+	dnow.strftime('%Y-%b-%d %H:%M')+' EST, '+
+	dexp.strftime('%Y-%b-%d')+' Expiry')
+plt.title(title)
+## adjust
+#plt.plot(xtemp,
+plt.ylabel('Put/Call Volume Ratio')
+plt.xlabel('Strike Price')
+plt.legend(loc='best')
+plt.tight_layout()
+## Save this plot
+#plt.savefig(write_path+'/'+ticker+'_at_time_'+dnow.strftime('%Y_%b_%d_%H_%M')+
+#	'_exp_'+dexp.strftime('%Y_%b_%d')+'_vega.png')
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Older style plots?? Maybe use
 #plt.plot(df_calls.strike,df_calls.lastPrice,'dc',markeredgecolor='c')
 #plt.plot(df_puts.strike,df_puts.lastPrice,'sm',markeredgecolor='m')
 #plt.show()
@@ -320,4 +388,24 @@ plt.savefig(write_path+'/'+ticker+'_at_time_'+dnow.strftime('%Y_%b_%d_%H_%M')+
 #plt.tight_layout()
 #plt.savefig(ticker+'put_prices.png')
 
+## probability of the asset to be between two price limits:
+## More sophisticated would be to automatically adjust k1 and/or k2 by the 
+## price of the premium, fill this in later.
+k1=0.9905*St
+## profit multiplier from a put strike?
+k2=1.01*St
+#prob=np.trapz(gp[(xptemp>=k1)&(xptemp<=k2)],
+#	xptemp[(xptemp>=k1)&(xptemp<=k2)])
+## probability of the asset to be below some price limit:
+prob=np.trapz(gp[(xpnew>=0)&(xpnew<=k1)],xpnew[(xpnew>=0)&(xpnew<=k1)])
+print('Probability for '+ticker+' to be less than '+str(k1)+' by ' +dexp.strftime('%Y-%b-%d')+': '+str(prob*100)+'%')
+## probability of the asset to be greater than some value; k1 for now
+prob=np.trapz(gp[(xpnew>=k1)&(xpnew<=np.max(xpnew))],
+	xpnew[(xpnew>=k1)&(xpnew<=np.max(xpnew))])
+print('Probability for '+ticker+' to be greater than '+str(k2)+' by ' +dexp.strftime('%Y-%b-%d')+': '+str(prob*100)+'%')
+## probability of the asset to be less than k1 and greater than k2
+prob=np.trapz(gp[(xpnew<=k1)],xpnew[(xpnew<=k1)])+np.trapz(gp[xpnew>=k2],xpnew[xpnew>=k2])
+print('Probability for '+ticker+' to be less than '+str(k1)+' or greater than '+str(k2)+' by ' +dexp.strftime('%Y-%b-%d')+': '+str(prob*100)+'%')
+## Fill under the curve, as though we have integrated to k1?
+#plt.fill_between(x, y, color='#539ecd')
 
