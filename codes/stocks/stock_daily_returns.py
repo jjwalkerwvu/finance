@@ -1,5 +1,5 @@
 """
-October 30,2019
+October 30, 2019
 
 stock_daily_returns.py
 
@@ -11,9 +11,15 @@ stock_daily_returns.py
 	The goal is to output a probability distribution function for the daily
 	returns.
 
+	Turn this into a function that accepts an arbitrary number of day returns!
+	(up to some maximum)
+	-Compare the resulting distribution to a risk-neutral distribution of the
+	same duration (expiry)
+
 
 @author Jeffrey J. Walker
 """
+
 
 import pandas as pd
 import numpy as np
@@ -31,11 +37,16 @@ from yahoo_csv_reader import yahoo_csv_reader
 path='/home/jjwalker/Desktop/finance/data/stocks/'
 ## Tickers should be in all caps, but right now I have files saved in lower
 ## case.
-ticker='^SPX'
+#ticker='^SPX'
+## please note: you want ^GSPC for historical s and p data since 1927.
+ticker='^GSPC'
 filename=path+ticker
 ## might be good to put nbin variable, the divisor of the total number of
 ## observation periods (typically days)
-nbin=1
+nbin=50
+
+## Want to execute in python shell? then use:
+#execfile(path+"stock_daily_returns.py")
 
 ## load up stock data:
 #price=pd.read_csv(path+ticker+'.csv',header=0)
@@ -51,6 +62,10 @@ nbin=1
 ## need to set values to numeric 
 price=yahoo_csv_reader(filename,ticker)
 
+## More general:
+#days = np.busday_count( start, end )
+## Or use resample for different day counts?
+#price_r=price.resample('W', label='left', loffset=pd.DateOffset(days=1))
 ## get daily returns; these can be the open to close, but better might be
 ## previous close to current close.
 ## These are given as percentage gain/loss
@@ -90,8 +105,14 @@ x=np.zeros(M)
 
 
 ## simple loop; just count the number of measurements between boundries of bin
-## Can we use np.digitize?
+## Can we use np.digitize? Or maybe bincount; possibly just use np.histogram
 #pdf=np.digitize()
+#attempt=np.histogram(daily_return,bins=len(price)/nbin),density=True)
+#midpoint=(attempt[1][1:]+attempt[1][1:])/2.0
+## can now plot:
+#plt.plot(midpoint,attempt[0],'.k');plt.show()
+## WANT THE ABILITY TO DO THIS ON A SUBSET!
+
 for i in range(1,M-1):
 	pdf[i]=1.0*np.sum((sorted_return>=(return_min+(i-1)*dreturn))&(sorted_return<(return_min+i*dreturn)))/N
 	## We also have to approximate the daily return that accompanies the pdf;
@@ -131,6 +152,10 @@ cauchy_returns=1.0/(np.pi*cauchy_scale*(1+((sorted_return-x0)/cauchy_scale)**2))
 ## cumulative distribution:
 cauchy_cdf=1/np.pi*np.arctan((sorted_return-x0)/cauchy_scale)+0.5
 
+## find the error earlier, but here is a fix:
+#x=x[1:-1]
+#pdf=pdf[1:-1]
+#cdf=cdf[1:-1]
 
 plt.figure()
 plt.subplot(211)
