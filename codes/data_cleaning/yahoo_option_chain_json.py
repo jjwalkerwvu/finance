@@ -131,6 +131,7 @@ def yahoo_option_chain_json(write_path,ticker,input_date):
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## Now, perform the necessary work to write to file.
 	## convert local time to utc.
+	#tnow=?
 	tnow.tz_localize(timezone).tz_convert('utc')
 	## in practice though, we will just assume all times (for stock purposes) 
 	## to be in eastern time, so just convert our local time to that

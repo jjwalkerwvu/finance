@@ -72,9 +72,12 @@ def yahoo_option_chain_multi_exp(write_path,ticker):
 	for date in expiry_dates:
 		url_date=url_string+'?date='+str(date)
 		option_chain_multi.append(pd.io.json.read_json(url_date))
+	
+	## Near here:
+	## Get the risk free rate?
 
 	## need the date and time if we want to write to a csv file.
-	## Get this immediately after pinging the website
+	## Get this immediately after pinging the website.
 	tnow=pd.to_datetime('today').now()
 	
 	## now make a dataframe, and save it
@@ -82,6 +85,7 @@ def yahoo_option_chain_multi_exp(write_path,ticker):
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## Now, perform the necessary work to write to file.
 	## convert local time to utc.
+	#tnow=?
 	tnow.tz_localize(timezone).tz_convert('utc')
 	## in practice though, we will just assume all times (for stock purposes) 
 	## to be in eastern time, so just convert our local time to that
@@ -111,6 +115,9 @@ def yahoo_option_chain_multi_exp(write_path,ticker):
 	filename=path+'/'+tnow_str+'_'+ticker+'_full_chain'+'.txt'
 	
 	option_chain.to_json(filename)
+
+	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	## Clean up the data for output variables of this function!
 	#strikes=bs_json['optionChain']['result'][0][entries[2]]
 	## could also use midpoint of bid ask?
 	spot_price=option_chain[0][0]['optionChain']['result'][0]['quote'][
