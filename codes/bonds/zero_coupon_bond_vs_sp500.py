@@ -75,7 +75,9 @@ yc=yc[np.argsort(yc.columns.astype(float))]
 xtemp = np.array(yc.columns.astype(float))
 
 ## Load spx for comparison: (or use ^GSPC)
-spx=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^GSPC','^GSPC')
+## EVEN BETTER! Use sp500TR, the sp500 total return index which assumes 
+## dividend reinvestment!
+spx=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^SP500TR','^SP500TR')
 ## SPX daily return, in case we need it:
 spx_drf=spx.Close[1:].values/(spx.Close[:-1])
 
