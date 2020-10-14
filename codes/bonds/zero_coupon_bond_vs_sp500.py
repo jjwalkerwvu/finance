@@ -149,4 +149,25 @@ for i in range(1,len(date_array)):
 
 final_value=c[-1]+n[-1]*p30.loc[date_array][-1]
 
+## interesting thing we can plot:
+start_index=22 # or use start date, if spx_1y has a datetime index
+spx_1yt=[np.prod(spx_1y[start_index:i]) for i in range(start_index+1,len(spx_1y))]
+r30_1yt=[np.prod(r30[start_index:i]) for i in range(start_index+1,len(spx_1y))]
+## sharpe/information/sortino ratio:
+r30_std=np.std(r30[start_index:])
+r30_mean=np.mean(r30[start_index:])
+spx_1y_std=np.std(spx_1y[start_index:])
+spx_1y_mean=np.mean(spx_1y[start_index:])
+
+plt.figure()
+title='Annual Returns Since ' + spx_1y.index[start_index].strftime("%Y %b")
+plt.title(title)
+plt.plot(spx_1yt,'-b',label='SP500 Dividends Reinvested');
+plt.plot(r30_1yt,'-g',label='30y Zero-Coupon Rolled Annually')
+plt.xlabel('Years')
+plt.ylabel('Return Factor')
+plt.legend(loc='best')
+plt.tight_layout()
+plt.savefig('TR500_vs_30yr_us_bond_from_'+spx_1y.index[start_index].strftime("%Y")+'.png')
+
 
