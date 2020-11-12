@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 ## needed for Granger causality test
 from statsmodels.tsa.stattools import grangercausalitytests
 from statsmodels.tsa.stattools import adfuller
+#from statsmodels.tsa.stattools import kpss
 ## import the csv reader for Yahoo finance data
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
@@ -41,6 +42,12 @@ common_values=pd.concat([fed_bs.WALCL,spx.Close],axis=1)
 start_date=pd.to_datetime('2009-01-02')
 ## calculate pearson correlation coefficient, easy peasy:
 corr_coef=common_values[common_values.index>start_date].corr(method='pearson')
+
+## BEFORE RUNNING ADF TEST, YOU NEED TO DO KPSS TEST!
+## May also be a good idea to take log of quantities before testing for trend
+## KPSS test: Null hypothesis is that the time series is stationary around a 
+## deterministic trend
+## If we reject the null hypothesis, then we can test for unit root
 
 ## ADF test: Null hypothesis is that the time series has unit root
 adftest=adfuller(df.Close,autolag='AIC')
@@ -70,6 +77,9 @@ gc_res=grangercausalitytests(x,nmlags)
 
 ## find lag with highest F-test, then print the following? (restricted model?)
 #print gc_res[4][1][0].summary()
+
+## Might also want to go the other way, to make sure that spx does not granger
+## cause the fed balance sheet
 
 
 
