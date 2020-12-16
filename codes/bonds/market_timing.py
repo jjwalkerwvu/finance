@@ -117,13 +117,23 @@ spx=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^GSPC','^GSPC')
 #spx_drf=spx.Close[1:].values/(spx.Close[:-1])
 
 ## FED funds rate:
-fedfunds_path='/home/jjwalker/Desktop/finance/data/us_economic_data/FEDFUNDS'
+## monthly data; still usefull for looking at major jumps in policy
+fedfunds_monthly_path='/home/jjwalker/Desktop/finance/data/us_economic_data/FEDFUNDS'
+## Daily data is usefull for checking when the rate reaches a target level for
+## a given day.
+fedfunds_path='/home/jjwalker/Desktop/finance/data/us_economic_data/DFF'
 fedfunds=fred_csv_reader(fedfunds_path)
-## I think back fill is the best way to display this
-fedfunds_bfill=fedfunds.resample('D').bfill()
+fedfunds_monthly=fred_csv_reader(fedfunds_monthly_path)
+## I think back fill is the best way to display the monthly data, in a daily format
+fedfunds_bfill=fedfunds_monthly.resample('D').bfill()
 ## this may be helpful
 
 
+## DCA inputs:
+## starting cash
+cash=0
+## DCA investing amount, dollars
+dca_inv=200
 ## Dates to use for dollar cost averaging; set to the first of the month
 ## Find a start date; Ideally this would be a treasury auction date?
 #start_date='1985-12-02' 	# this start date is the first month that 30 year 
@@ -133,7 +143,7 @@ start_date='1979-06-01'
 ## automatically
 #end_date='2019-12-02'
 #end_date='2020-08-03' ## Use latest Possible date:
-end_date='2020-04-01'
+end_date='2020-08-01'
 cal = USFederalHolidayCalendar()
 #cal=get_calendar('USFederalCalendar')
 first_bday_of_month = [get_business_day(d).date() 
@@ -144,6 +154,8 @@ first_bday_of_month = [get_business_day(d).date()
 first_bday_of_month[28]=first_bday_of_month[28]+timedelta(days=3)
 ## 1994 April 1
 first_bday_of_month[100]=first_bday_of_month[100]+timedelta(days=3)
+
+
 
 ## or use 10y - 3mo?
 #yc_indicator=yc['10']-yc['0.25']
@@ -165,6 +177,13 @@ max_wait=3*365
 exit_stocks=False
 ## The flag for when to sell bonds and buy stocks again
 exit_bonds=True
+## flag for if we are buying bonds for dca part of loop
+buy_bonds=False
+## flag for if we are buying stocks for dca part of loop
+buy_stocks=True
+## array for uninversion time stamps:
+uninvert_dates=np.array([])
+
 
 for i in range(1,len(yc_10y_minus_2y)):
 	## date for each step:
@@ -183,16 +202,24 @@ for i in range(1,len(yc_10y_minus_2y)):
 		#if (inversion==True and uninversion==False):
 		#	print('First Inversion: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d'))
 	#inversion=inv_check*~prev_inv
+		
 	
 	## Check to see when the yield curve uninverts; only care about it the 
 	## first time it uninverts after an inversion, hence the or statement
 	if ((inv_check==False and prev_check==True) and uninversion==False):
 		
 		uninversion=True
+		## keep an array of all these timestamps
+		uninvert_dates=np.append(uninvert_dates,loop_date)
 		uninv_days=0
 		## print the first day of the uninversion?
-		print('Uninversion: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d'))
+		print('Uninversion: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d')+
+			', SPX sell price: '+str(spx['Close'][yc_10y_minus_2y.index[i]]))
 		exit_bonds=False
+		exit_stocks=True
+		buy_bonds=True
+		buy_stocks=False
+
 	
 	#if (inversion==True and uninversion==True):
 	#	print('First uninversion: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d'))
@@ -218,13 +245,31 @@ for i in range(1,len(yc_10y_minus_2y)):
 	if uninv_days<=max_wait:
 		5*5
 		
-	if uninv_days>=max_wait or fedfunds_bfill['FEDFUNDS'][yc_10y_minus_2y.index[i]]==0:
+	## The fed funds equal to 0 case; where the threshold is 0.15% or lower	
+	## (Or max wait time has elapsed and we exit the trade)
+	if (uninv_days>=max_wait or 
+		fedfunds['DFF'][yc_10y_minus_2y.index[i]]<=0.15) and exit_bonds==False:
 		exit_bonds=True
-
+		## sell the bonds here
+		## amount of time that has elapsed since bonds were purchased
+		#tb=
+		print('Exit Bonds: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d')+
+			', SPX buy in price: '+str(spx['Close'][yc_10y_minus_2y.index[i]]))
+	## The fed funds has dropped since the last increase (local max) and has
+	## stayed constant for 1 business quarter (3 months)
+	
+	## Asset allocation update part of the loop
 	if exit_bonds==True:
 		## sell bonds and buy stocks again according to dca rules		
-		5*5
-	
+		buy_bonds=False
+		buy_stocks=True
+		exit_stocks=False
 
+	## DCA part of loop.
+	## DCA according to some rules on the first day of the month or some other
+	## Frequency
+	#if loop_date in first_bday_of_month:
+		#if buy_stocks==True
+		#if buy_bonds==True
 
 
