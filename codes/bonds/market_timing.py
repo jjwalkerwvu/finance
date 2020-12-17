@@ -201,7 +201,8 @@ for i in range(1,len(yc_10y_minus_2y)):
 	## compute the "inversion" logic each pass through the loop?
 	prev_check=yc_10y_minus_2y[i-1]<0
 	inv_check=yc_10y_minus_2y[i]<0
-	## need to know whether to use 10y zc or 30y zc
+	## need to know whether to use 10y zc or 30y zc; if false, use 10y zc
+	## if true, use my preferred levered bond, the 30y zc when buying bonds
 	thirty_zcb=loop_date>=pd.to_datetime("1985-12-02")
 	## Yield curve has just inverted if the statement below is true	
 	if (inv_check==True and prev_check==False) and exit_bonds==True:
