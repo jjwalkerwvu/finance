@@ -130,10 +130,13 @@ fedfunds_bfill=fedfunds_monthly.resample('D').bfill()
 
 
 ## DCA inputs:
-## starting cash
+## starting cash; make this zero if you want to start by dca'ing first 
+## iteration of list
 cash=0
 ## DCA investing amount, dollars
 dca_inv=200
+## initial number of spx shares:
+nshares=0
 ## Dates to use for dollar cost averaging; set to the first of the month
 ## Find a start date; Ideally this would be a treasury auction date?
 #start_date='1985-12-02' 	# this start date is the first month that 30 year 
@@ -162,8 +165,14 @@ first_bday_of_month[100]=first_bday_of_month[100]+timedelta(days=3)
 ## Construct the recession prediction indicator, the 10y-2y yield
 yc_10y_minus_2y=yc['10']-yc['2']
 ## I think dropping NANs here is ok and appropriate, and only go from 
-## start_date to end_date
+## start_date to end_date. 
+#pd.merge(left=df_with_millions, left_on='date_column',
+#         right=df_with_seven_thousand, right_on='date_column')
 yc_10y_minus_2y=yc_10y_minus_2y[start_date:end_date].dropna()
+## May want to also restructure this to include dates where bonds and stocks 
+## both have data
+loop_index=yc_10y_minus_2y.index.intersection(spx.index)
+yc_10y_minus_2y=yc_10y_minus_2y[loop_index]
 ## find whether yield curve starts off inverted or not for the time period
 ## you are investigating.
 thresh=0
@@ -192,6 +201,8 @@ for i in range(1,len(yc_10y_minus_2y)):
 	## compute the "inversion" logic each pass through the loop?
 	prev_check=yc_10y_minus_2y[i-1]<0
 	inv_check=yc_10y_minus_2y[i]<0
+	## need to know whether to use 10y zc or 30y zc
+	thirty_zcb=loop_date>=pd.to_datetime("1985-12-02")
 	## Yield curve has just inverted if the statement below is true	
 	if (inv_check==True and prev_check==False) and exit_bonds==True:
 		## if there is an inversion, continue investing in stocks? 
@@ -243,8 +254,10 @@ for i in range(1,len(yc_10y_minus_2y)):
 	## Cut our losses if the fed funds rate increases by more a larger
 	## amount than the most recent decrease
 	if uninv_days<=max_wait:
-		5*5
-		
+		# wait until local max, last change was a larger decrease than the
+		# last increase, and current rate is unchanged for 1 business quarter
+		5*5		
+	
 	## The fed funds equal to 0 case; where the threshold is 0.15% or lower	
 	## (Or max wait time has elapsed and we exit the trade)
 	if (uninv_days>=max_wait or 
@@ -259,17 +272,49 @@ for i in range(1,len(yc_10y_minus_2y)):
 	## stayed constant for 1 business quarter (3 months)
 	
 	## Asset allocation update part of the loop
-	if exit_bonds==True:
+	## Sell all bonds and buy back into stocks if either condition below is
+	## true on the exact day it occurs
+	## Also include condition that this must be at least second loop iteration?
+	if (exit_bonds==True) and (nshares==0):
 		## sell bonds and buy stocks again according to dca rules		
 		buy_bonds=False
 		buy_stocks=True
 		exit_stocks=False
+		## liquidate bond position; requires some finesse on account of the
+		## various maturities in the portfolio
+
+		#cash=0
+	
+		## lump sum into stocks; need to get dates in common with stocks and bonds before
+		## activating this line
+		nshares=np.floor(cash/spx['Close'][loop_date])
+		cash=cash-nshares*spx['Close'][loop_date]
+
+	## if we intend to exit our stock position, lump sum into bonds on the 
+	## exact day that it occurs
+	if (exit_stocks==True) and (nshares!=0):
+		buy_bonds=True
+		buy_stocks=False
+		## liquidate stock position, easy peasy
+		cash=cash+nshares*spx['Close'][loop_date]	
+		nshares=0	
+		## lump sum into bonds; 10 year zero coupon before 1985 December, 
+		## 30 year zero coupon afterward
+	 
 
 	## DCA part of loop.
 	## DCA according to some rules on the first day of the month or some other
 	## Frequency
-	#if loop_date in first_bday_of_month:
-		#if buy_stocks==True
-		#if buy_bonds==True
+	if np.datetime64(loop_date.strftime('%Y-%m-%d')) in first_bday_of_month:
+		cash=cash+dca_inv	
+		#print('You are dca\'ing at date: '+loop_date.strftime('%Y-%m-%d'))
+		if buy_stocks==True:
+			dca_shares=np.floor(cash/spx['Close'][loop_date])
+			## update cash position
+			cash=cash-dca_shares*spx['Close'][loop_date]
+			## update total shares
+			nshares=nshares+dca_shares
+		#if buy_bonds==True:
+		
 
 
