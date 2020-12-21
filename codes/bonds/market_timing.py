@@ -116,17 +116,7 @@ spx=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^GSPC','^GSPC')
 ## SPX daily return, in case we need it:
 #spx_drf=spx.Close[1:].values/(spx.Close[:-1])
 
-## FED funds rate:
-## monthly data; still usefull for looking at major jumps in policy
-fedfunds_monthly_path='/home/jjwalker/Desktop/finance/data/us_economic_data/FEDFUNDS'
-## Daily data is usefull for checking when the rate reaches a target level for
-## a given day.
-fedfunds_path='/home/jjwalker/Desktop/finance/data/us_economic_data/DFF'
-fedfunds=fred_csv_reader(fedfunds_path)
-fedfunds_monthly=fred_csv_reader(fedfunds_monthly_path)
-## I think back fill is the best way to display the monthly data, in a daily format
-fedfunds_bfill=fedfunds_monthly.resample('D').bfill()
-## this may be helpful
+
 
 
 ## DCA inputs:
@@ -159,10 +149,24 @@ first_bday_of_month[28]=first_bday_of_month[28]+timedelta(days=3)
 first_bday_of_month[100]=first_bday_of_month[100]+timedelta(days=3)
 
 
+## FED funds rate:
+## monthly data; still usefull for looking at major jumps in policy
+fedfunds_monthly_path='/home/jjwalker/Desktop/finance/data/us_economic_data/FEDFUNDS'
+## Daily data is usefull for checking when the rate reaches a target level for
+## a given day.
+fedfunds_path='/home/jjwalker/Desktop/finance/data/us_economic_data/DFF'
+fedfunds=fred_csv_reader(fedfunds_path)
+fedfunds_monthly=fred_csv_reader(fedfunds_monthly_path)
+## I think back fill is the best way to display the monthly data, in a daily format
+fedfunds_bfill=fedfunds_monthly.resample('D').bfill()
+## this may be helpful
+fedfunds_diff=fedfunds_bfill.diff()
 
+
+
+## Construct the recession prediction indicator, the 10y-2y yield
 ## or use 10y - 3mo?
 #yc_indicator=yc['10']-yc['0.25']
-## Construct the recession prediction indicator, the 10y-2y yield
 yc_10y_minus_2y=yc['10']-yc['2']
 ## I think dropping NANs here is ok and appropriate, and only go from 
 ## start_date to end_date. 
@@ -192,6 +196,22 @@ buy_bonds=False
 buy_stocks=True
 ## array for uninversion time stamps:
 uninvert_dates=np.array([])
+
+## Additional variables for "FEDFUNDS" logic
+## get the most recent decrease and increase before starting the main loop?
+temp=fedfunds_diff.FEDFUNDS[:yc_10y_minus_2y.index[0]]
+## if you want the date for when it occurs, it is temp.index[temp>0][-1]
+mrff_increase=temp[temp>0][-1] 
+mrff_increase_date=temp.index[temp>0][-1]
+## the value:
+mrff_increase_value=fedfunds_bfill.FEDFUNDS[mrff_increase_date]
+## Same, for decrease:
+mrff_decrease=temp[temp<0][-1]
+mrff_decrease_date=temp.index[temp<0][-1]
+mrff_decrease_value=fedfunds_bfill.FEDFUNDS[mrff_decrease_date]
+## threshold for considering the effective fed funds rate "constant"; so it
+## is permitted to be +/- 0.25%
+const_thresh=0.25
 
 
 for i in range(1,len(yc_10y_minus_2y)):
@@ -225,8 +245,9 @@ for i in range(1,len(yc_10y_minus_2y)):
 		uninvert_dates=np.append(uninvert_dates,loop_date)
 		uninv_days=0
 		## print the first day of the uninversion?
-		print('Uninversion: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d')+
-			', SPX sell price: '+str(spx['Close'][yc_10y_minus_2y.index[i]]))
+		print('Uninversion on date: '+loop_date.strftime('%Y-%b-%d')+
+			' buy bonds at price: ' + str(p30[loop_date])+	
+			', SPX sell price: '+str(spx['Close'][loop_date]))
 		exit_bonds=False
 		exit_stocks=True
 		buy_bonds=True
@@ -242,9 +263,6 @@ for i in range(1,len(yc_10y_minus_2y)):
 	uninv_days=uninv_days+uninversion*(
 			(yc_10y_minus_2y.index[i]-yc_10y_minus_2y.index[i-1])).days
 	
-	## very last statement of inversion logic should be computation of 
-	## prev_check
-	#prev_check=yc_10y_minus_2y[i]<0
 
 	## fed funds logic; only care about fed funds logic if the yield curve
 	## has inverted up to 2 (3?) years ago.
@@ -254,21 +272,51 @@ for i in range(1,len(yc_10y_minus_2y)):
 	## 3.) or if the fed funds rate hits zero, then we are also done
 	## Cut our losses if the fed funds rate increases by more a larger
 	## amount than the most recent decrease
-	if uninv_days<=max_wait:
-		# wait until local max, last change was a larger decrease than the
-		# last increase, and current rate is unchanged for 1 business quarter
-		5*5		
+	## Do we need additional logic? want continually decreasing fedfunds, 
+	## with a threshold
+	## Maybe we need to think in terms of decrease cycle; if fedfunds is 	
+	## continually decreasing (within some reasonable threshold)
+
+	## most recent fedfunds increase or decrease:
+	if fedfunds_diff.FEDFUNDS[loop_date]>0.01:
+		mrff_increase=fedfunds_diff.FEDFUNDS[loop_date]
+		mrff_increase_date=loop_date
+	if fedfunds_diff.FEDFUNDS[loop_date]<-0.01:
+		mrff_decrease=fedfunds_diff.FEDFUNDS[loop_date]
+		mrff_decrease_value=fedfunds_bfill.FEDFUNDS[loop_date]
+		mrff_decrease_date=loop_date
 	
+	## wait until local max, last change was a larger decrease than the
+	## last increase, and current rate is unchanged for 1 business quarter
+	if (exit_bonds==False and
+		(uninv_days<=max_wait) and 
+		(mrff_decrease_date>mrff_increase_date) and #(abs(mrff_decrease)>mrff_increase) and
+		((loop_date-mrff_decrease_date).days>=90)):
+		## put this requirement here so we do not calculate it every iteration
+		temp=fedfunds_bfill.FEDFUNDS[mrff_decrease_date:loop_date]
+		## easier to use the "negative" of the desired condition	
+		if ((temp>(mrff_decrease_value+const_thresh))&
+			(temp<(mrff_decrease_value-const_thresh))).sum()==0: 
+			## 		
+			exit_bonds=True
+			## Trying something here	
+			#mrff_decrease=0
+			print('Exit Bonds at price: '+str(p30[loop_date])+ ' on date: '+
+				loop_date.strftime('%Y-%b-%d')+
+				', SPX buy in price: '+str(spx['Close'][loop_date]))
+
 	## The fed funds equal to 0 case; where the threshold is 0.15% or lower	
 	## (Or max wait time has elapsed and we exit the trade)
 	if (uninv_days>=max_wait or 
 		fedfunds['DFF'][yc_10y_minus_2y.index[i]]<=0.15) and exit_bonds==False:
 		exit_bonds=True
+		#mrff_decrease=0
 		## sell the bonds here
 		## amount of time that has elapsed since bonds were purchased
 		#tb=
-		print('Exit Bonds: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d')+
-			', SPX buy in price: '+str(spx['Close'][yc_10y_minus_2y.index[i]]))
+		print('Exit Bonds at price: '+str(p30[loop_date])+ ' on date: '+
+			loop_date.strftime('%Y-%b-%d')+
+			', SPX buy in price: '+str(spx['Close'][loop_date]))
 	## The fed funds has dropped since the last increase (local max) and has
 	## stayed constant for 1 business quarter (3 months)
 	
@@ -316,6 +364,11 @@ for i in range(1,len(yc_10y_minus_2y)):
 			## update total shares
 			nshares=nshares+dca_shares
 		#if buy_bonds==True:
-		
+			#thirty_zcb
 
-
+## total everything up to get value of portfolio		
+vs=nshares*spx['Close'][loop_date]
+## something more complicated if we have any bonds
+vb=0
+vtot=vs+vb+cash
+print("Total market value of portfolio: "+str(vtot))
