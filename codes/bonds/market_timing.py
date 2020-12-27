@@ -17,6 +17,25 @@ market_timing.py
 	Then, we hold these instruments, perhaps even DCA into these investments,
 	until the Fed Funds rate drops by a large amount - something I still need 
 	to quantify satisfactorily.
+
+	The Fed Funds TARGET rate is the "indicator" for when to exit the bond 
+	position. 
+	For the data, I use DFEDTAR from Fred:
+	https://fred.stlouisfed.org/series/DFEDTAR
+	I 
+	Note that this data is discontinued as of 2008, so I use the rates (upper
+	limit) from the following link for my data:
+	https://www.federalreserve.gov/monetarypolicy/openmarket.htm
+	Note that where this data overlaps with DFEDTAR from Fred, the DEFEDTAR 
+	data corresponds to the upper target range.
+	I do not care about the daily or monthly effective rate, I just care about
+	the policy, which is given by these rates. 
+	For pre-1982 data, I (will) use monthly fed funds effective rate, put into
+	0.25% increments (with ceiling function) to hopefully get close enough to
+	the "policy" number at that time; more historical research is necessary 
+	for this procedure though because I read that the Fed did not start 
+	publicly announcing its target rate until 1979.
+
 	Some ideas (not all are mutually exclusive) for when to sell:
 		- 	Fed rate has decreased, and has remained constant for 2 or more 
 			quarters (within some tolerance)
@@ -150,6 +169,8 @@ first_bday_of_month[100]=first_bday_of_month[100]+timedelta(days=3)
 
 
 ## FED funds rate:
+## I want to use the target rate! The one that the fed has announced since 1979
+#fedfunds_target='/home/jjwalker/Desktop/finance/data/us_economic_data/fedfunds_target'
 ## monthly data; still usefull for looking at major jumps in policy
 fedfunds_monthly_path='/home/jjwalker/Desktop/finance/data/us_economic_data/FEDFUNDS'
 ## Daily data is usefull for checking when the rate reaches a target level for
@@ -158,6 +179,7 @@ fedfunds_path='/home/jjwalker/Desktop/finance/data/us_economic_data/DFF'
 fedfunds=fred_csv_reader(fedfunds_path)
 fedfunds_monthly=fred_csv_reader(fedfunds_monthly_path)
 ## I think back fill is the best way to display the monthly data, in a daily format
+## should use ffill instead of bfill!
 fedfunds_bfill=fedfunds_monthly.resample('D').bfill()
 ## this may be helpful
 fedfunds_diff=fedfunds_bfill.diff()
@@ -278,20 +300,39 @@ for i in range(1,len(yc_10y_minus_2y)):
 	## continually decreasing (within some reasonable threshold)
 
 	## most recent fedfunds increase or decrease:
-	if fedfunds_diff.FEDFUNDS[loop_date]>0.01:
-		mrff_increase=fedfunds_diff.FEDFUNDS[loop_date]
-		mrff_increase_date=loop_date
-	if fedfunds_diff.FEDFUNDS[loop_date]<-0.01:
-		mrff_decrease=fedfunds_diff.FEDFUNDS[loop_date]
-		mrff_decrease_value=fedfunds_bfill.FEDFUNDS[loop_date]
-		mrff_decrease_date=loop_date
+	temp=fedfunds_diff.FEDFUNDS[mrff_increase_date:loop_date]
+	mrff_increase=temp[temp>=0.01][-1] 
+	mrff_increase_date=temp.index[temp>=0.01][-1]
+	mrff_increase_value=fedfunds_bfill.FEDFUNDS[mrff_increase_date]
+	## decrease:
+	temp=fedfunds_diff.FEDFUNDS[mrff_decrease_date:loop_date]
+	mrff_decrease=temp[temp<0][-1]
+	mrff_decrease_date=temp.index[temp<0][-1]
+	mrff_decrease_value=fedfunds_bfill.FEDFUNDS[mrff_decrease_date]
+
+	## sum difference to see if we are in a cutting cycle?
+	#cutting_cycle=
+
+	## test if Fed Funds is constant for a 90 day interval or maybe 180?
+	fed_const=abs(fedfunds_diff.FEDFUNDS[
+		loop_date-relativedelta(days=180):loop_date].sum())<=const_thresh
+
+	## most recent fedfunds increase or decrease:
+	#if fedfunds_diff.FEDFUNDS[loop_date]>0.01:
+	#	mrff_increase=fedfunds_diff.FEDFUNDS[loop_date]
+	#	mrff_increase_date=loop_date
+	#if fedfunds_diff.FEDFUNDS[loop_date]<-0.01:
+	#	mrff_decrease=fedfunds_diff.FEDFUNDS[loop_date]
+	#	mrff_decrease_value=fedfunds_bfill.FEDFUNDS[loop_date]
+	#	mrff_decrease_date=loop_date
 	
 	## wait until local max, last change was a larger decrease than the
 	## last increase, and current rate is unchanged for 1 business quarter
 	if (exit_bonds==False and
 		(uninv_days<=max_wait) and 
-		(mrff_decrease_date>mrff_increase_date) and #(abs(mrff_decrease)>mrff_increase) and
-		((loop_date-mrff_decrease_date).days>=90)):
+		(mrff_decrease_date>mrff_increase_date) and 
+		(abs(mrff_decrease)>mrff_increase) and
+		fed_const):
 		## put this requirement here so we do not calculate it every iteration
 		temp=fedfunds_bfill.FEDFUNDS[mrff_decrease_date:loop_date]
 		## easier to use the "negative" of the desired condition	
@@ -301,6 +342,7 @@ for i in range(1,len(yc_10y_minus_2y)):
 			exit_bonds=True
 			## Trying something here	
 			#mrff_decrease=0
+			print('Most recent decrease date: '+mrff_decrease_date.strftime('%Y-%b-%d'))
 			print('Exit Bonds at price: '+str(p30[loop_date])+ ' on date: '+
 				loop_date.strftime('%Y-%b-%d')+
 				', SPX buy in price: '+str(spx['Close'][loop_date]))
@@ -308,7 +350,7 @@ for i in range(1,len(yc_10y_minus_2y)):
 	## The fed funds equal to 0 case; where the threshold is 0.15% or lower	
 	## (Or max wait time has elapsed and we exit the trade)
 	if (uninv_days>=max_wait or 
-		fedfunds['DFF'][yc_10y_minus_2y.index[i]]<=0.15) and exit_bonds==False:
+		fedfunds['DFF'][yc_10y_minus_2y.index[i]]<=0.1) and exit_bonds==False:
 		exit_bonds=True
 		#mrff_decrease=0
 		## sell the bonds here
