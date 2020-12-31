@@ -18,6 +18,9 @@ market_timing.py
 	until the Fed Funds rate drops by a large amount - something I still need 
 	to quantify satisfactorily.
 
+
+	Explanation of the various pieces of data and how they are put together:
+	
 	The Fed Funds TARGET rate is the "indicator" for when to exit the bond 
 	position. 
 	For the data, I use DFEDTAR from Fred:
@@ -34,6 +37,11 @@ market_timing.py
 	the "policy" number at that time; more historical research is necessary 
 	for this procedure though because I read that the Fed did not start 
 	publicly announcing its target rate until 1979.
+
+	The zero coupon yield curves are contained in the file feds200628.csv
+	Download this file again from website to get updated yields: 
+	https://www.federalreserve.gov/pubs/feds/2006/200628/200628abs.html
+
 
 	Some ideas (not all are mutually exclusive) for when to sell:
 		- 	Fed rate has decreased, and has remained constant for 2 or more 
@@ -110,9 +118,12 @@ zc30=zc['SVENY30']
 ## the market price of the 30 year zc bond:
 par_val=1000
 p30=par_val/(1+zc30/100)**30
+## 30 year STRIPS start date
+strips30_start=pd.Timestamp('1985-12-02')
 
 ## regular yield curve data from FRED:
-filename='/home/jjwalker/Desktop/finance/data/bonds/fredgraph_01_may_2020'
+#filename='/home/jjwalker/Desktop/finance/data/bonds/fredgraph_01_may_2020'
+filename='/home/jjwalker/Desktop/finance/data/bonds/fredgraph_2020_dec_31'
 yc=fred_csv_reader(filename)
 ## change some column names:
 yc.rename(columns={'DGS1MO':'0.083','DGS3MO':'0.25','DGS6MO':'0.5','DGS1':'1',
@@ -222,6 +233,9 @@ uninversion=False
 uninv_days=0
 ## maximum wait time before reallocating, or "giving up" in days; 2 or 3 years 
 max_wait=3*365
+## Consider also a wait time, say 1 business quarter of inversion before 
+## entering the trade
+#invert_wait=90
 ## The flag for when to sell stocks and buy bonds:
 exit_stocks=False
 ## The flag for when to sell bonds and buy stocks again
@@ -433,6 +447,10 @@ for i in range(1,len(yc_indicator)):
 		nshares=0	
 		## lump sum into bonds; 10 year zero coupon before 1985 December, 
 		## 30 year zero coupon afterward
+		#if loop_date<strips30_start:	
+		## buy 10 year "STRIPS"
+		#else:
+		## buy 30 year STRIPS
 	 
 
 	## DCA part of loop.
@@ -448,7 +466,12 @@ for i in range(1,len(yc_indicator)):
 			## update total shares
 			nshares=nshares+dca_shares
 		#if buy_bonds==True:
-			#thirty_zcb
+			#if loop_date<strips30_start:	
+			## buy 10 year "STRIPS"
+			#else:
+			## buy 30 year STRIPS
+				#thirty_zcb
+
 
 ## total everything up to get value of portfolio		
 vs=nshares*spx['Close'][loop_date]
