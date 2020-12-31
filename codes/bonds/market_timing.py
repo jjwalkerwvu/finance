@@ -21,8 +21,7 @@ market_timing.py
 	The Fed Funds TARGET rate is the "indicator" for when to exit the bond 
 	position. 
 	For the data, I use DFEDTAR from Fred:
-	https://fred.stlouisfed.org/series/DFEDTAR
-	I 
+	https://fred.stlouisfed.org/series/DFEDTAR 
 	Note that this data is discontinued as of 2008, so I use the rates (upper
 	limit) from the following link for my data:
 	https://www.federalreserve.gov/monetarypolicy/openmarket.htm
@@ -173,36 +172,51 @@ first_bday_of_month[100]=first_bday_of_month[100]+timedelta(days=3)
 #fedfunds_target='/home/jjwalker/Desktop/finance/data/us_economic_data/fedfunds_target'
 ## monthly data; still usefull for looking at major jumps in policy
 fedfunds_monthly_path='/home/jjwalker/Desktop/finance/data/us_economic_data/FEDFUNDS'
-## Daily data is usefull for checking when the rate reaches a target level for
-## a given day.
-fedfunds_path='/home/jjwalker/Desktop/finance/data/us_economic_data/DFF'
-fedfunds=fred_csv_reader(fedfunds_path)
-fedfunds_monthly=fred_csv_reader(fedfunds_monthly_path)
-## I think back fill is the best way to display the monthly data, in a daily format
-## should use ffill instead of bfill!
-fedfunds_bfill=fedfunds_monthly.resample('D').bfill()
+## The target rate, from https://fred.stlouisfed.org/series/DFEDTAR and 
+## https://www.federalreserve.gov/monetarypolicy/openmarket.htm
+fedfunds_target_path='/home/jjwalker/Desktop/finance/data/us_economic_data/fedfunds_target'
+fedfunds=fred_csv_reader(fedfunds_monthly_path)
+fedfunds_target=fred_csv_reader(fedfunds_target_path)
+## to bin the pre-1982 monthly data to nearest 0.25%:
+## (use ceiling, not round or floor!)
+ffm=np.ceil(4*fedfunds_monthly)/4
+## start of fed funds monthly data:
+ffm_start=ffm.index[0]
+## end of fed funds monthly data is one day before start of fed funds target data
+## fedfunds_target starts at date: 1982-09-27
+ffm_end=fedfunds_target.index[0]-relativedelta(days=1)
+## rename columns:
+fedfunds_target.rename(columns={fedfunds_target.columns[0]:ffm.columns[0]},
+	inplace=True)
+## Now merge the datasets; use merge instead of join because there should be
+## no elements in common.
+#fedfunds_result=ffm[ffm_start:ffm_end].merge(fedfunds_target,how='outer')
+fedfunds_result=pd.concat([ffm[ffm_start:ffm_end],fedfunds_target])
+## I think forward fill is the best way to display the monthly data, in a daily format
+fedfunds_ffill=fedfunds_result.resample('D').ffill()
 ## this may be helpful
-fedfunds_diff=fedfunds_bfill.diff()
+fedfunds_diff=fedfunds_ffill.diff()
+
 
 
 
 ## Construct the recession prediction indicator, the 10y-2y yield
 ## or use 10y - 3mo?
 #yc_indicator=yc['10']-yc['0.25']
-yc_10y_minus_2y=yc['10']-yc['2']
+yc_indicator=yc['10']-yc['2']
 ## I think dropping NANs here is ok and appropriate, and only go from 
 ## start_date to end_date. 
 #pd.merge(left=df_with_millions, left_on='date_column',
 #         right=df_with_seven_thousand, right_on='date_column')
-yc_10y_minus_2y=yc_10y_minus_2y[start_date:end_date].dropna()
+yc_indicator=yc_indicator[start_date:end_date].dropna()
 ## May want to also restructure this to include dates where bonds and stocks 
 ## both have data
-loop_index=yc_10y_minus_2y.index.intersection(spx.index)
-yc_10y_minus_2y=yc_10y_minus_2y[loop_index]
+loop_index=yc_indicator.index.intersection(spx.index)
+yc_indicator=yc_indicator[loop_index]
 ## find whether yield curve starts off inverted or not for the time period
 ## you are investigating.
 thresh=0
-prev_check=yc_10y_minus_2y[0]<0
+prev_check=yc_indicator[0]<0
 ## maybe check this? How to initialize for any time period?
 uninversion=False
 uninv_days=0
@@ -221,7 +235,7 @@ uninvert_dates=np.array([])
 
 ## Additional variables for "FEDFUNDS" logic
 ## get the most recent decrease and increase before starting the main loop?
-temp=fedfunds_diff.FEDFUNDS[:yc_10y_minus_2y.index[0]]
+temp=fedfunds_diff.FEDFUNDS[:yc_indicator.index[0]]
 ## if you want the date for when it occurs, it is temp.index[temp>0][-1]
 mrff_increase=temp[temp>0][-1] 
 mrff_increase_date=temp.index[temp>0][-1]
@@ -233,16 +247,22 @@ mrff_decrease_date=temp.index[temp<0][-1]
 mrff_decrease_value=fedfunds_bfill.FEDFUNDS[mrff_decrease_date]
 ## threshold for considering the effective fed funds rate "constant"; so it
 ## is permitted to be +/- 0.25%
-const_thresh=0.25
+const_thresh=0.0
+## start with last cycle complete? CHECK TO MAKE SURE!
+## Either go through the data and check to see, or write some code to do it
+## automatically
+cycle_complete=True
+## last cycle end date?
+cycle_end=pd.Timestamp("1977-04-01")
+cycle_end_dates=np.array([cycle_end])
 
-
-for i in range(1,len(yc_10y_minus_2y)):
+for i in range(1,len(yc_indicator)):
 	## date for each step:
-	loop_date=yc_10y_minus_2y.index[i]
+	loop_date=yc_indicator.index[i]
 	## Every step in loop?
 	## compute the "inversion" logic each pass through the loop?
-	prev_check=yc_10y_minus_2y[i-1]<0
-	inv_check=yc_10y_minus_2y[i]<0
+	prev_check=yc_indicator[i-1]<0
+	inv_check=yc_indicator[i]<0
 	## need to know whether to use 10y zc or 30y zc; if false, use 10y zc
 	## if true, use my preferred levered bond, the 30y zc when buying bonds
 	thirty_zcb=loop_date>=pd.to_datetime("1985-12-02")
@@ -254,12 +274,14 @@ for i in range(1,len(yc_10y_minus_2y)):
 		## Use first inversion before exit_bonds=True?
 		#print(str(uninversion))
 		#if (inversion==True and uninversion==False):
-		#	print('First Inversion: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d'))
+		#	print('First Inversion: '+yc_indicator.index[i].strftime('%Y-%b-%d'))
 	#inversion=inv_check*~prev_inv
 		
 	
 	## Check to see when the yield curve uninverts; only care about it the 
 	## first time it uninverts after an inversion, hence the or statement
+	## May also want to include a wait time before exit_stocks=True, like 
+	## having one quarter of yield curve inversion before liquidation
 	if ((inv_check==False and prev_check==True) and uninversion==False):
 		
 		uninversion=True
@@ -277,13 +299,13 @@ for i in range(1,len(yc_10y_minus_2y)):
 
 	
 	#if (inversion==True and uninversion==True):
-	#	print('First uninversion: '+yc_10y_minus_2y.index[i].strftime('%Y-%b-%d'))
+	#	print('First uninversion: '+yc_indicator.index[i].strftime('%Y-%b-%d'))
 	#	inversion=False
 
 	## the yield curve has just uninverted, and so the clock starts; count
 	## the number of days 
 	uninv_days=uninv_days+uninversion*(
-			(yc_10y_minus_2y.index[i]-yc_10y_minus_2y.index[i-1])).days
+			(yc_indicator.index[i]-yc_indicator.index[i-1])).days
 	
 
 	## fed funds logic; only care about fed funds logic if the yield curve
@@ -298,6 +320,13 @@ for i in range(1,len(yc_10y_minus_2y)):
 	## with a threshold
 	## Maybe we need to think in terms of decrease cycle; if fedfunds is 	
 	## continually decreasing (within some reasonable threshold)
+
+	## New idea:
+	## if cycle_complete=True, and we observe a local max or const fed funds
+	## for 180 days, and we have decreased at least 0.25 since (last local max
+	## or fed funds const), begin new cutting cycle.
+	## Cycle continues as long as the rate keeps decreasing from the level of
+	## the cycle start until: fedfunds constant for 2 quarters, fed to 0 or 3 years.
 
 	## most recent fedfunds increase or decrease:
 	temp=fedfunds_diff.FEDFUNDS[mrff_increase_date:loop_date]
@@ -314,44 +343,57 @@ for i in range(1,len(yc_10y_minus_2y)):
 	#cutting_cycle=
 
 	## test if Fed Funds is constant for a 90 day interval or maybe 180?
-	fed_const=abs(fedfunds_diff.FEDFUNDS[
+	## The constant test for when a cycle ends
+	fed_const_end=abs(fedfunds_diff.FEDFUNDS[
 		loop_date-relativedelta(days=180):loop_date].sum())<=const_thresh
 
-	## most recent fedfunds increase or decrease:
-	#if fedfunds_diff.FEDFUNDS[loop_date]>0.01:
-	#	mrff_increase=fedfunds_diff.FEDFUNDS[loop_date]
-	#	mrff_increase_date=loop_date
-	#if fedfunds_diff.FEDFUNDS[loop_date]<-0.01:
-	#	mrff_decrease=fedfunds_diff.FEDFUNDS[loop_date]
-	#	mrff_decrease_value=fedfunds_bfill.FEDFUNDS[loop_date]
-	#	mrff_decrease_date=loop_date
+	## test for cycle start, constant fed funds before a recent decrease?
+	fed_const_start=((abs(fedfunds_diff.FEDFUNDS[
+		loop_date-relativedelta(days=181):
+		loop_date-relativedelta(days=1)].sum()
+		)<=const_thresh) and (mrff_decrease_date>cycle_end))
+
+	## A new cutting cycle begins when fed funds target rate decreases,
+	## either from a local max or after two quarters of a constant rate
+	## foll
+	if (((mrff_decrease_date>mrff_increase_date) or (fed_const_start)) and 
+		(cycle_complete and (mrff_decrease_date>cycle_end))):
+		##
+		local_max=True
+		cycle_start=yc_indicator.index[i]
+		cycle_complete=False
+		#print('Cutting cycle started on: '+ cycle_start.strftime('%Y-%b-%d')) 
+
+	if ((cycle_complete==False) and fed_const_end):
+		cycle_end=yc_indicator.index[i]
+		cycle_complete=True
+		cycle_end_dates=np.append(cycle_end_dates,cycle_end)
 	
 	## wait until local max, last change was a larger decrease than the
 	## last increase, and current rate is unchanged for 1 business quarter
 	if (exit_bonds==False and
 		(uninv_days<=max_wait) and 
-		(mrff_decrease_date>mrff_increase_date) and 
-		(abs(mrff_decrease)>mrff_increase) and
-		fed_const):
-		## put this requirement here so we do not calculate it every iteration
-		temp=fedfunds_bfill.FEDFUNDS[mrff_decrease_date:loop_date]
-		## easier to use the "negative" of the desired condition	
-		if ((temp>(mrff_decrease_value+const_thresh))&
-			(temp<(mrff_decrease_value-const_thresh))).sum()==0: 
-			## 		
-			exit_bonds=True
-			## Trying something here	
-			#mrff_decrease=0
-			print('Most recent decrease date: '+mrff_decrease_date.strftime('%Y-%b-%d'))
-			print('Exit Bonds at price: '+str(p30[loop_date])+ ' on date: '+
-				loop_date.strftime('%Y-%b-%d')+
-				', SPX buy in price: '+str(spx['Close'][loop_date]))
+		(cycle_complete and prev_cycle_check==False)): 
+		##		
+		exit_bonds=True
+		#cycle_complete=True
+		#cycle_end=yc_indicator.index[i]
+		## Trying something here	
+		#mrff_decrease=0
+		#print('Most recent decrease date: '+mrff_decrease_date.strftime('%Y-%b-%d'))
+		print('Exit Bonds at price: '+str(p30[loop_date])+ ' on date: '+
+			loop_date.strftime('%Y-%b-%d')+
+			', SPX buy in price: '+str(spx['Close'][loop_date]))
 
 	## The fed funds equal to 0 case; where the threshold is 0.15% or lower	
 	## (Or max wait time has elapsed and we exit the trade)
-	if (uninv_days>=max_wait or 
-		fedfunds['DFF'][yc_10y_minus_2y.index[i]]<=0.1) and exit_bonds==False:
+	if ((uninv_days>=max_wait or 
+		fedfunds_ffill['FEDFUNDS'][yc_indicator.index[i]]<=0.25) and 
+		exit_bonds==False):
+		##
 		exit_bonds=True
+		#cycle_complete=True
+		#cycle_end=yc_indicator.index[i]
 		#mrff_decrease=0
 		## sell the bonds here
 		## amount of time that has elapsed since bonds were purchased
@@ -359,8 +401,8 @@ for i in range(1,len(yc_10y_minus_2y)):
 		print('Exit Bonds at price: '+str(p30[loop_date])+ ' on date: '+
 			loop_date.strftime('%Y-%b-%d')+
 			', SPX buy in price: '+str(spx['Close'][loop_date]))
-	## The fed funds has dropped since the last increase (local max) and has
-	## stayed constant for 1 business quarter (3 months)
+	## previous cycle check?
+	prev_cycle_check=cycle_complete
 	
 	## Asset allocation update part of the loop
 	## Sell all bonds and buy back into stocks if either condition below is
