@@ -118,6 +118,8 @@ zc30=zc['SVENY30']
 ## the market price of the 30 year zc bond:
 par_val=1000
 p30=par_val/(1+zc30/100)**30
+## calculate market prices right now, before we even start:
+pzc=par_val/(1+zc[zc.columns[67:97]]/100.0)**range(1,31)
 ## 30 year STRIPS start date
 strips30_start=pd.Timestamp('1985-12-02')
 
@@ -176,6 +178,11 @@ first_bday_of_month = [get_business_day(d).date()
 first_bday_of_month[28]=first_bday_of_month[28]+timedelta(days=3)
 ## 1994 April 1
 first_bday_of_month[100]=first_bday_of_month[100]+timedelta(days=3)
+## And now, initialize some variables for bonds:
+## Array of purchase dates
+bond_purch=np.array([])
+## Number of bonds corresponding to each purchase date
+nbonds=np.array([])
 
 
 ## FED funds rate:
@@ -186,7 +193,7 @@ fedfunds_monthly_path='/home/jjwalker/Desktop/finance/data/us_economic_data/FEDF
 ## The target rate, from https://fred.stlouisfed.org/series/DFEDTAR and 
 ## https://www.federalreserve.gov/monetarypolicy/openmarket.htm
 fedfunds_target_path='/home/jjwalker/Desktop/finance/data/us_economic_data/fedfunds_target'
-fedfunds=fred_csv_reader(fedfunds_monthly_path)
+fedfunds_monthly=fred_csv_reader(fedfunds_monthly_path)
 fedfunds_target=fred_csv_reader(fedfunds_target_path)
 ## to bin the pre-1982 monthly data to nearest 0.25%:
 ## (use ceiling, not round or floor!)
@@ -254,11 +261,11 @@ temp=fedfunds_diff.FEDFUNDS[:yc_indicator.index[0]]
 mrff_increase=temp[temp>0][-1] 
 mrff_increase_date=temp.index[temp>0][-1]
 ## the value:
-mrff_increase_value=fedfunds_bfill.FEDFUNDS[mrff_increase_date]
+mrff_increase_value=fedfunds_ffill.FEDFUNDS[mrff_increase_date]
 ## Same, for decrease:
 mrff_decrease=temp[temp<0][-1]
 mrff_decrease_date=temp.index[temp<0][-1]
-mrff_decrease_value=fedfunds_bfill.FEDFUNDS[mrff_decrease_date]
+mrff_decrease_value=fedfunds_ffill.FEDFUNDS[mrff_decrease_date]
 ## threshold for considering the effective fed funds rate "constant"; so it
 ## is permitted to be +/- 0.25%
 const_thresh=0.0
@@ -346,12 +353,12 @@ for i in range(1,len(yc_indicator)):
 	temp=fedfunds_diff.FEDFUNDS[mrff_increase_date:loop_date]
 	mrff_increase=temp[temp>=0.01][-1] 
 	mrff_increase_date=temp.index[temp>=0.01][-1]
-	mrff_increase_value=fedfunds_bfill.FEDFUNDS[mrff_increase_date]
+	mrff_increase_value=fedfunds_ffill.FEDFUNDS[mrff_increase_date]
 	## decrease:
 	temp=fedfunds_diff.FEDFUNDS[mrff_decrease_date:loop_date]
 	mrff_decrease=temp[temp<0][-1]
 	mrff_decrease_date=temp.index[temp<0][-1]
-	mrff_decrease_value=fedfunds_bfill.FEDFUNDS[mrff_decrease_date]
+	mrff_decrease_value=fedfunds_ffill.FEDFUNDS[mrff_decrease_date]
 
 	## sum difference to see if we are in a cutting cycle?
 	#cutting_cycle=
@@ -446,7 +453,15 @@ for i in range(1,len(yc_indicator)):
 		cash=cash+nshares*spx['Close'][loop_date]	
 		nshares=0	
 		## lump sum into bonds; 10 year zero coupon before 1985 December, 
-		## 30 year zero coupon afterward
+		## 30 year zero coupon thereafter
+		bond_purch=np.append(bond_purch,loop_date)
+		nbonds=np.floor(cash/(
+				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
+				pzc['SVENY30'][loop_date]*(loop_date>=strips30_start)))
+		## update cash position
+		cash=cash-nbonds*(
+				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
+				pzc['SVENY30'][loop_date]*(loop_date>=strips30_start))
 		#if loop_date<strips30_start:	
 		## buy 10 year "STRIPS"
 		#else:
@@ -465,17 +480,21 @@ for i in range(1,len(yc_indicator)):
 			cash=cash-dca_shares*spx['Close'][loop_date]
 			## update total shares
 			nshares=nshares+dca_shares
-		#if buy_bonds==True:
-			#if loop_date<strips30_start:	
-			## buy 10 year "STRIPS"
-			#else:
-			## buy 30 year STRIPS
-				#thirty_zcb
+		if buy_bonds==True:
+			bond_purch=np.append(bond_purch,loop_date)
+			nbonds=np.floor(cash/(
+				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
+				pzc['SVENY30'][loop_date]*(loop_date>=strips30_start)))
+			## update cash position
+			cash=cash-nbonds*(
+				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
+				pzc['SVENY30'][loop_date]*(loop_date>=strips30_start))
 
 
 ## total everything up to get value of portfolio		
 vs=nshares*spx['Close'][loop_date]
 ## something more complicated if we have any bonds
+#if nbonds is not empty?
 vb=0
 vtot=vs+vb+cash
 print("Total market value of portfolio: "+str(vtot))
