@@ -167,7 +167,7 @@ start_date='1979-06-01'
 ## automatically
 #end_date='2019-12-02'
 #end_date='2020-08-03' ## Use latest Possible date:
-end_date='2020-08-01'
+end_date='2020-08-31'
 cal = USFederalHolidayCalendar()
 #cal=get_calendar('USFederalCalendar')
 first_bday_of_month = [get_business_day(d).date() 
@@ -385,13 +385,14 @@ for i in range(1,len(yc_indicator)):
 		cycle_complete=False
 		#print('Cutting cycle started on: '+ cycle_start.strftime('%Y-%b-%d')) 
 
+	## Test for end of cycle; cycle must not have been complete, and the fed
+	## has been constant for 2 business quarters
 	if ((cycle_complete==False) and fed_const_end):
 		cycle_end=yc_indicator.index[i]
 		cycle_complete=True
 		cycle_end_dates=np.append(cycle_end_dates,cycle_end)
 	
-	## wait until local max, last change was a larger decrease than the
-	## last increase, and current rate is unchanged for 1 business quarter
+	## The conditions for exiting bonds and/or Eurodollar futures
 	if (exit_bonds==False and
 		(uninv_days<=max_wait) and 
 		(cycle_complete and prev_cycle_check==False)): 
@@ -416,29 +417,39 @@ for i in range(1,len(yc_indicator)):
 		#cycle_complete=True
 		#cycle_end=yc_indicator.index[i]
 		#mrff_decrease=0
-		## sell the bonds here
-		## amount of time that has elapsed since bonds were purchased
-		#tb=
 		print('Exit Bonds at price: '+str(p30[loop_date])+ ' on date: '+
 			loop_date.strftime('%Y-%b-%d')+
 			', SPX buy in price: '+str(spx['Close'][loop_date]))
+	
 	## previous cycle check?
+	## I need this because otherwise, cycle_complete=True will end the cycle
+	## prematurely
 	prev_cycle_check=cycle_complete
 	
 	## Asset allocation update part of the loop
 	## Sell all bonds and buy back into stocks if either condition below is
 	## true on the exact day it occurs
 	## Also include condition that this must be at least second loop iteration?
-	if (exit_bonds==True) and (nshares==0):
+	if ((exit_bonds==True) and (nbonds.size!=0)) and (nshares==0):
 		## sell bonds and buy stocks again according to dca rules		
 		buy_bonds=False
 		buy_stocks=True
 		exit_stocks=False
 		## liquidate bond position; requires some finesse on account of the
 		## various maturities in the portfolio
-
-		#cash=0
-	
+		## use floor function for now? Try linear or "exponential" interpolation later
+		#print(str(bond_purch))
+		#print(str(nbonds))
+		telapsed=np.floor(
+			((loop_date-bond_purch).astype('timedelta64[D]')/365.25).astype(float))
+		remaining_duration=((30-telapsed)*(bond_purch>=strips30_start)+
+			(10-telapsed)*(bond_purch<strips30_start))-1
+		#print(str(pzc.loc[loop_date].iloc[remaining_duration].values))
+		cash=np.sum(pzc.loc[loop_date].iloc[remaining_duration].values*nbonds)
+		## clear the bond arrays
+		bond_purch=np.array([])
+		nbonds=np.array([])
+		
 		## lump sum into stocks; need to get dates in common with stocks and bonds before
 		## activating this line
 		nshares=np.floor(cash/spx['Close'][loop_date])
@@ -455,13 +466,14 @@ for i in range(1,len(yc_indicator)):
 		## lump sum into bonds; 10 year zero coupon before 1985 December, 
 		## 30 year zero coupon thereafter
 		bond_purch=np.append(bond_purch,loop_date)
-		nbonds=np.floor(cash/(
+		ntemp=np.floor(cash/(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
-				pzc['SVENY30'][loop_date]*(loop_date>=strips30_start)))
+				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start)))
+		nbonds=np.append(nbonds,ntemp)
 		## update cash position
-		cash=cash-nbonds*(
+		cash=cash-ntemp*(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
-				pzc['SVENY30'][loop_date]*(loop_date>=strips30_start))
+				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start))
 		#if loop_date<strips30_start:	
 		## buy 10 year "STRIPS"
 		#else:
@@ -482,13 +494,14 @@ for i in range(1,len(yc_indicator)):
 			nshares=nshares+dca_shares
 		if buy_bonds==True:
 			bond_purch=np.append(bond_purch,loop_date)
-			nbonds=np.floor(cash/(
+			ntemp=np.floor(cash/(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
-				pzc['SVENY30'][loop_date]*(loop_date>=strips30_start)))
+				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start)))
+			nbonds=np.append(nbonds,ntemp)
 			## update cash position
-			cash=cash-nbonds*(
+			cash=cash-ntemp*(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
-				pzc['SVENY30'][loop_date]*(loop_date>=strips30_start))
+				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start))
 
 
 ## total everything up to get value of portfolio		
