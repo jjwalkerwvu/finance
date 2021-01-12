@@ -42,6 +42,9 @@ market_timing.py
 	Download this file again from website to get updated yields: 
 	https://www.federalreserve.gov/pubs/feds/2006/200628/200628abs.html
 
+	Monthly dividends taken from Shiller's website:
+	http://www.econ.yale.edu/~shiller/data.htm
+
 
 	Some ideas (not all are mutually exclusive) for when to sell:
 		- 	Fed rate has decreased, and has remained constant for 2 or more 
@@ -148,8 +151,6 @@ spx=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^GSPC','^GSPC')
 #spx_drf=spx.Close[1:].values/(spx.Close[:-1])
 
 
-
-
 ## DCA inputs:
 ## starting cash; make this zero if you want to start by dca'ing first 
 ## iteration of list
@@ -174,15 +175,31 @@ first_bday_of_month = [get_business_day(d).date()
 	for d in pd.date_range(start_date, end_date, freq='BMS')]
 ## Stop gap solution to get rid of good friday (1988 April 1, 1994 April 1)
 ## problem.
+## 1983 April 1
+first_bday_of_month[46]=first_bday_of_month[46]+timedelta(days=3)
 ## 1988 April 1
-first_bday_of_month[28]=first_bday_of_month[28]+timedelta(days=3)
+first_bday_of_month[106]=first_bday_of_month[106]+timedelta(days=3)
 ## 1994 April 1
-first_bday_of_month[100]=first_bday_of_month[100]+timedelta(days=3)
+first_bday_of_month[178]=first_bday_of_month[178]+timedelta(days=3)
+## 2007 January 2
+first_bday_of_month[331]=first_bday_of_month[331]+timedelta(days=1)
 ## And now, initialize some variables for bonds:
 ## Array of purchase dates
 bond_purch=np.array([])
 ## Number of bonds corresponding to each purchase date
 nbonds=np.array([])
+
+
+## prepare dividends; may also consider total return index for post-1988
+shiller_data=pd.read_excel('/home/jjwalker/Desktop/finance/data/stocks/ie_data.xls',
+	sheetname='Data',header=7)
+#shiller_data['Date'] = pd.to_datetime(shiller_data.Date,infer_datetime_format=True)
+## if start date is 1979-06-01 and end date is 2020-08-31, then use 
+## iloc[1301:1796] as the range; each value corresponds to payment received 
+## on the respective month
+div=shiller_data.D[1301:1796]
+div=pd.DataFrame(div.values,index=first_bday_of_month)
+div.index=pd.to_datetime(div.index)
 
 
 ## FED funds rate:
@@ -276,6 +293,7 @@ cycle_complete=True
 ## last cycle end date?
 cycle_end=pd.Timestamp("1977-04-01")
 cycle_end_dates=np.array([cycle_end])
+cycle_start_dates=np.array([])
 
 for i in range(1,len(yc_indicator)):
 	## date for each step:
@@ -383,6 +401,7 @@ for i in range(1,len(yc_indicator)):
 		local_max=True
 		cycle_start=yc_indicator.index[i]
 		cycle_complete=False
+		cycle_start_dates=np.append(cycle_start_dates,cycle_start)
 		#print('Cutting cycle started on: '+ cycle_start.strftime('%Y-%b-%d')) 
 
 	## Test for end of cycle; cycle must not have been complete, and the fed
@@ -438,6 +457,9 @@ for i in range(1,len(yc_indicator)):
 		## liquidate bond position; requires some finesse on account of the
 		## various maturities in the portfolio
 		## use floor function for now? Try linear or "exponential" interpolation later
+		## Here's how you might do it if you have something between 29 and 30 yr dur.: 
+		## rexp=np.log(pzc.loc[loop_date].SVEN30/pzc.loc[loop_date].SVEN29)/1.0
+		## price=(pzc.loc[loop_date].SVENY30)*np.exp(rexp*(1-tremaining))
 		#print(str(bond_purch))
 		#print(str(nbonds))
 		telapsed=np.floor(
@@ -446,6 +468,7 @@ for i in range(1,len(yc_indicator)):
 			(10-telapsed)*(bond_purch<strips30_start))-1
 		#print(str(pzc.loc[loop_date].iloc[remaining_duration].values))
 		cash=np.sum(pzc.loc[loop_date].iloc[remaining_duration].values*nbonds)
+		## Print cost basis!
 		## clear the bond arrays
 		bond_purch=np.array([])
 		nbonds=np.array([])
@@ -484,9 +507,15 @@ for i in range(1,len(yc_indicator)):
 	## DCA according to some rules on the first day of the month or some other
 	## Frequency
 	if np.datetime64(loop_date.strftime('%Y-%m-%d')) in first_bday_of_month:
-		cash=cash+dca_inv	
+		## not sure if this works for dividends, but simplest use for now
+		## Apparently Shiller dividend data is annualized? not sure why I have to divide by 12
+		cash=cash+dca_inv+nshares*div.loc[loop_date][0]/12.0	
+		#print('cash = '+str(cash))
+		#print('number of shares: '+str(nshares))
+		#print(loop_date.strftime('%Y-%m-%d'))
 		#print('You are dca\'ing at date: '+loop_date.strftime('%Y-%m-%d'))
 		if buy_stocks==True:
+			## get cash from dividends here?
 			dca_shares=np.floor(cash/spx['Close'][loop_date])
 			## update cash position
 			cash=cash-dca_shares*spx['Close'][loop_date]
@@ -506,8 +535,16 @@ for i in range(1,len(yc_indicator)):
 
 ## total everything up to get value of portfolio		
 vs=nshares*spx['Close'][loop_date]
-## something more complicated if we have any bonds
-#if nbonds is not empty?
+## something more complicated if we end with any bonds
+#if nbonds.size!=0:
 vb=0
 vtot=vs+vb+cash
 print("Total market value of portfolio: "+str(vtot))
+
+## plot cycle start/end dates on fed funds/yc_indicator plot with green/red 
+## circles
+plt.plot(fedfunds_ffill.FEDFUNDS,'.k')
+plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_end_dates],'s',markerfacecolor='r',
+	markeredgecolor='r')
+plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_start_dates],'^',markerfacecolor='g',
+	markeredgecolor='g')
