@@ -8,6 +8,7 @@ Created on Tuesday March 31 2020
 		surface and produce an implied probability distribution.
 		This script produces several plots as a diagnostic
 
+	See Malz 2014 for another way to get risk-neutral distributions!
 """
 
 import pandas as pd
@@ -27,6 +28,9 @@ import sys
 ## Be sure that you use a valid ticker symbol!
 ## Indices have a '^' before their letter symbols!
 ticker='^SPX'
+#ticker='^XSP'	# sp500 1/10 index, european exercise
+#ticker='^OEX'	# sp100, european exercise
+#ticker='^XEO'	# sp100, american exercise
 #ticker='SPY'
 #ticker='TSLA'
 #ticker='^VIX'
@@ -39,7 +43,7 @@ ticker='^SPX'
 #ticker='UUP'
 #ticker='TLT'
 ## days until expiry
-dte=135
+dte=0
 
 ## insert the path corresponding to the Yahoo option chain scraper; 
 ## we will need this function!
