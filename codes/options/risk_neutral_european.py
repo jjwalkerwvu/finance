@@ -8,6 +8,10 @@ Created on Sunday August 2 2020
 		for a security with european-style options. Some additional cleaning
 		is necessary to produce the risk-neutral probability distributions
 
+	Consider using cubic splines anchored at endpoints when interpolating
+	prices, maybe this can be another method (make this a class?)
+	See Allan M. Malz (2014) for details
+
 	Inputs:
 		chain	-	a dataframe containing an option chain, already cleaned
 					using yahoo_option_chain_multi_exp.py or the version that
