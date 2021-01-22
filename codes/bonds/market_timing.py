@@ -477,6 +477,34 @@ for i in range(1,len(yc_indicator)):
 		## activating this line
 		nshares=np.floor(cash/spx['Close'][loop_date])
 		cash=cash-nshares*spx['Close'][loop_date]
+		## print out the return on bonds vs spx from uninversion to end of fed
+		## cutting cycle
+		## current price of 10 year bond purchased on the last uninvert date:
+		trem=10-(loop_date-uninvert_dates[-1]).days/365.25
+		## plug into equation 22 from Gurkayanka
+		yrem=(zc.BETA0.loc[loop_date]+
+			zc.BETA1.loc[loop_date]*(1-np.exp(-trem/zc.TAU1.loc[loop_date])
+			)/(trem/zc.TAU1.loc[loop_date])+
+			zc.BETA2.loc[loop_date]*((1-np.exp(-trem/zc.TAU1.loc[loop_date])
+			)/(trem/zc.TAU1.loc[loop_date])-np.exp(-trem/zc.TAU1.loc[loop_date]))+
+			zc.BETA3.loc[loop_date]*((1-np.exp(-trem/zc.TAU2.loc[loop_date])
+			)/(trem/zc.TAU2.loc[loop_date])-np.exp(-trem/zc.TAU2.loc[loop_date]))
+			)
+		pbond=par_val/(1+yrem/100.0)**(trem)
+		br=((pbond-
+			pzc['SVENY10'].loc[uninvert_dates[-1]])/
+			pzc['SVENY10'].loc[uninvert_dates[-1]])
+		## old method		
+		ty=pzc.loc[loop_date].iloc[int(9-np.floor((loop_date-uninvert_dates[-1]).days/365.25))]
+		print('Underestimate: '+str(ty)+', Svenson approximation: '+str(pbond))
+		#br=((ty-
+		#	pzc['SVENY10'].loc[uninvert_dates[-1]])/
+		#	pzc['SVENY10'].loc[uninvert_dates[-1]])
+		## new method		
+		print('Bond return: '+str(br*100)+ '% on date: '+loop_date.strftime('%Y-%b-%d'))
+		print('SP500 return: '+str(100*(
+			spx.Close[loop_date]-spx.Close[uninvert_dates[-1]])/
+			spx.Close[uninvert_dates[-1]]) +'%')
 
 	## if we intend to exit our stock position, lump sum into bonds on the 
 	## exact day that it occurs
