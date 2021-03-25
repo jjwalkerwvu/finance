@@ -41,6 +41,13 @@ market_timing.py
 	The zero coupon yield curves are contained in the file feds200628.csv
 	Download this file again from website to get updated yields: 
 	https://www.federalreserve.gov/pubs/feds/2006/200628/200628abs.html
+	(specifically this link, if you want to use pd.read_csv)
+	https://www.federalreserve.gov/data/yield-curve-tables/feds200628.csv
+	(pd.read_csv(url,sep=",",header=7)
+
+	Try using pd.read_csv with the following url??
+	I think the numbers after period1 and period2 may be unix time stamps?
+	^GSPC data from url: https://query1.finance.yahoo.com/quote/%5EGSPC/history?period1=-1325635200&period2=1613520000&interval=1d&filter=history&frequency=1d&includeAdjustedClose=true
 
 	Monthly dividends taken from Shiller's website:
 	http://www.econ.yale.edu/~shiller/data.htm
@@ -85,18 +92,21 @@ import sys
 import datetime
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
+## Need the federal holiday calendar for ease
+from pandas.tseries.holiday import get_calendar, HolidayCalendarFactory,GoodFriday
+from pandas.tseries.holiday import USFederalHolidayCalendar
 ## insert the path corresponding to bond_price; we will need this function!
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/bonds')
 #from bond_price import bond_price
-## import the csv reader for FRED data
+## import the csv reader for FRED data, yahoo, etc.
 sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
 from fred_csv_reader import fred_csv_reader
 from yahoo_csv_reader import yahoo_csv_reader
-## Need the federal holiday calendar for ease
-from pandas.tseries.holiday import get_calendar, HolidayCalendarFactory,GoodFriday
-from pandas.tseries.holiday import USFederalHolidayCalendar
+#from shiller_excel_reader import shiller_excel_reader 
 
+
+## A function to get the nearest business day
 def get_business_day(date):
     while date.isoweekday() > 5 or date in cal.holidays():
         date += datetime.timedelta(days=1)
@@ -574,5 +584,5 @@ print("Total market value of portfolio: "+str(vtot))
 plt.plot(fedfunds_ffill.FEDFUNDS,'.k')
 plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_end_dates],'s',markerfacecolor='r',
 	markeredgecolor='r')
-plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_start_dates],'^',markerfacecolor='g',
+plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_start_dates],'>',markerfacecolor='g',
 	markeredgecolor='g')

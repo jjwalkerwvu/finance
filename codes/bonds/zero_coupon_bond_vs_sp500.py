@@ -7,6 +7,14 @@ zero_coupon_bond_vs_sp500.py
 
 	This script loads the zero coupon yield curves contained in feds200628.csv
 	and performs an annual rolldown. 
+
+	Inspired by quotes from Gary Shilling:
+	https://www.forbes.com/sites/johnmauldin/2016/08/15/bond-guru-gary-shilling-thinks-this-bond-rally-is-alive-and-well/
+	(see also documents from his blog/website)
+
+	and this post on Bogleheads forum:
+	https://www.bogleheads.org/forum/viewtopic.php?t=158785
+
 	Download this file again from website: 
 		https://www.federalreserve.gov/pubs/feds/2006/200628/200628abs.html
 	(if you want to add additional dates beyond october 2020)
@@ -150,7 +158,7 @@ for i in range(1,len(date_array)):
 final_value=c[-1]+n[-1]*p30.loc[date_array][-1]
 
 ## interesting thing we can plot:
-start_index=22 # or use start date, if spx_1y has a datetime index
+start_index=25 # or use start date, if spx_1y has a datetime index
 spx_1yt=[np.prod(spx_1y[start_index:i]) for i in range(start_index+1,len(spx_1y))]
 r30_1yt=[np.prod(r30[start_index:i]) for i in range(start_index+1,len(spx_1y))]
 ## sharpe/information/sortino ratio:
