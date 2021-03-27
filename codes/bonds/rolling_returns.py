@@ -30,8 +30,14 @@ def get_business_day(date):
         date += datetime.timedelta(days=1)
     return date
 
+## Pick the calendar we want to use
+cal = USFederalHolidayCalendar()
+## possible different approach:
+#cal=get_calendar('USFederalCalendar')
+
 ## spx total return
 spx=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^SP500TR','^SP500TR')
+
 ## Zero coupon yield curve from FRED:
 ## read in data; have to use (7)th line as the header, I don't know why
 datafile="/home/jjwalker/Desktop/finance/data/bonds/feds200628.csv"
@@ -47,6 +53,10 @@ pzc=par_val/(1+zc[zc.columns[67:97]]/100.0)**range(1,31)
 ## 30 year STRIPS start date
 #strips30_start=pd.Timestamp('1985-12-02')
 start_date=pd.to_datetime('1985-12-02')
+strips_duration=26
+pzc_buy=pzc[pzc.columns[strips_duration-1]]
+## change to using the beta, tau, etc. parameters later, but use this for now
+pzc_sell=pzc[pzc.columns[strips_duration-2]]
 
 ## For a given start date, need to buy 30 zc, sell one year later, repeat
 ## until desired time frame (in years)
@@ -70,6 +80,13 @@ domain_check=final_date>start_date
 ## Cant figure out a good way to do this with built in functions...
 #date_array=pd.bdate_range(start=start_date,end=start_date+relativedelta(years=rolling_period+1),freq='BA',holidays=USFederalHolidayCalendar)
 
+## Quick setup for finding rolling returns for sp500; change later when
+## shiller_excel_reader.py is working properly
+sp_roll_array = pd.DatetimeIndex([get_business_day(d).date()+
+	relativedelta(years=rolling_period) 
+	for d in spx.index[:len(spx[:final_date])]])
+sp_tot_return=(spx.Close[sp_roll_array].values)/(spx.Close[:final_date])
+
 
 ## Make the "main array", all days between start_date and final_date
 roll_array = pd.DatetimeIndex([get_business_day(d).date() 
@@ -89,15 +106,26 @@ for i in range(len(roll_array)):
 		roll_array[i]+relativedelta(years=j+1)-relativedelta(days=5)) 
 		for j in range(rolling_period)])
 
-	roll_return[i]=np.prod((pzc.SVENY29.loc[sell_date].values)/
-		(pzc.SVENY30.loc[buy_date].values))
+	roll_return[i]=np.prod((pzc_sell.loc[sell_date].values)/
+		(pzc_buy.loc[buy_date].values))
 
 ## Make a data frame of the rolling returns for simplicity:
 zc_return=pd.DataFrame(roll_return,index=roll_array,columns=['zc_return'])
 ## format the total return of sp500tr:
 #tot_return=(spx.Close[start_date:final_date].values/spx.Close[start_date:final_date].values)**(1/rolling_period)-1
 ## put roll_return and roll_array together into a timeseries
-plt.plot(zc_return,'-k');plt.show()
+#plt.plot(zc_return,'-k');plt.show()
 ## CAGR:
-#plt.plot((zc_return**(1/30.0)-1)*100,'-b');plt.show()
+plt.figure()
+plt.title(str(rolling_period)+'-Year Rolling Return')
+spx_cagr=(sp_tot_return**(1.0/rolling_period)-1)*100
+zc_cagr=(zc_return**(1.0/rolling_period)-1)*100
+plt.plot(zc_cagr,'-b',label=str(strips_duration)+'y Annually Rolled Zero')
+plt.plot(spx_cagr,'dk',label='SP500');
+plt.ylabel('CAGR %')
+plt.xlabel('Date')
+plt.legend(loc='best')
+plt.tight_layout()
+#plt.show()
+plt.savefig(str(strips_duration)+'y_zc_and_sp500_'+str(rolling_period)+'y_rolling_return.png')
 
