@@ -135,6 +135,12 @@ p30=par_val/(1+zc30/100)**30
 pzc=par_val/(1+zc[zc.columns[67:97]]/100.0)**range(1,31)
 ## 30 year STRIPS start date
 strips30_start=pd.Timestamp('1985-12-02')
+## Duration of zero-coupon bond that you want to buy when yield curve inverts?
+## My thought was to use 30 year STRIPS, but the lack of issuance between
+## February 18, 2002 until February 9, 2006 suggests using 26 for the sake of 
+## continuity.
+strips_duration=10
+pzc_buy=pzc[pzc.columns[strips_duration-1]]
 
 ## regular yield curve data from FRED:
 #filename='/home/jjwalker/Desktop/finance/data/bonds/fredgraph_01_may_2020'
@@ -467,17 +473,40 @@ for i in range(1,len(yc_indicator)):
 		## liquidate bond position; requires some finesse on account of the
 		## various maturities in the portfolio
 		## use floor function for now? Try linear or "exponential" interpolation later
+		## Or better, just use the Svenson approximation!
 		## Here's how you might do it if you have something between 29 and 30 yr dur.: 
 		## rexp=np.log(pzc.loc[loop_date].SVEN30/pzc.loc[loop_date].SVEN29)/1.0
 		## price=(pzc.loc[loop_date].SVENY30)*np.exp(rexp*(1-tremaining))
 		#print(str(bond_purch))
 		#print(str(nbonds))
-		telapsed=np.floor(
-			((loop_date-bond_purch).astype('timedelta64[D]')/365.25).astype(float))
-		remaining_duration=((30-telapsed)*(bond_purch>=strips30_start)+
+		telapsed=(
+			(loop_date-bond_purch).astype('timedelta64[D]')/365.25).astype(float)
+		
+		#remaining_duration=((strips_duration-np.floor(telapsed))*(
+		#	bond_purch>=strips30_start)+
+		#	(10-np.floor(telapsed))*(bond_purch<strips30_start))-1
+		#cash=np.sum(pzc.loc[loop_date].iloc[remaining_duration].values*nbonds)
+		#print(cash)
+
+		## alternate (improved) attempt; remove the floor function, allow 
+		## telapsed to be a float.
+		rem_dur=((strips_duration-telapsed)*(bond_purch>=strips30_start)+
 			(10-telapsed)*(bond_purch<strips30_start))-1
-		#print(str(pzc.loc[loop_date].iloc[remaining_duration].values))
-		cash=np.sum(pzc.loc[loop_date].iloc[remaining_duration].values*nbonds)
+		## plug remaining_duration into equation 22 from Gurkayanka; an array
+		yeff=(zc.BETA0.loc[loop_date]+
+			zc.BETA1.loc[loop_date]*(1-np.exp(-rem_dur/zc.TAU1.loc[loop_date])
+			)/(rem_dur/zc.TAU1.loc[loop_date])+
+			zc.BETA2.loc[loop_date]*((1-np.exp(-rem_dur/zc.TAU1.loc[loop_date])
+			)/(rem_dur/zc.TAU1.loc[loop_date])-np.exp(-rem_dur/zc.TAU1.loc[loop_date]))+
+			zc.BETA3.loc[loop_date]*((1-np.exp(-rem_dur/zc.TAU2.loc[loop_date])
+			)/(rem_dur/zc.TAU2.loc[loop_date])-np.exp(-rem_dur/zc.TAU2.loc[loop_date]))
+			)
+		## value of the basket of bonds; new method checks out, gives similar
+		## but slightly higher result than old method above (mar 29, 2021)
+		peff=par_val/(1+yeff/100.0)**(rem_dur)
+		cash=np.sum(peff*nbonds)
+
+		
 		## Print cost basis!
 		## clear the bond arrays
 		bond_purch=np.array([])
@@ -505,7 +534,8 @@ for i in range(1,len(yc_indicator)):
 			pzc['SVENY10'].loc[uninvert_dates[-1]])/
 			pzc['SVENY10'].loc[uninvert_dates[-1]])
 		## old method		
-		ty=pzc.loc[loop_date].iloc[int(9-np.floor((loop_date-uninvert_dates[-1]).days/365.25))]
+		ty=pzc.loc[loop_date].iloc[
+			int(9-np.floor((loop_date-uninvert_dates[-1]).days/365.25))]
 		print('Underestimate: '+str(ty)+', Svenson approximation: '+str(pbond))
 		#br=((ty-
 		#	pzc['SVENY10'].loc[uninvert_dates[-1]])/
@@ -529,12 +559,12 @@ for i in range(1,len(yc_indicator)):
 		bond_purch=np.append(bond_purch,loop_date)
 		ntemp=np.floor(cash/(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
-				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start)))
+				np.nan_to_num(pzc_buy[loop_date])*(loop_date>=strips30_start)))
 		nbonds=np.append(nbonds,ntemp)
 		## update cash position
 		cash=cash-ntemp*(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
-				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start))
+				np.nan_to_num(pzc_buy[loop_date])*(loop_date>=strips30_start))
 		#if loop_date<strips30_start:	
 		## buy 10 year "STRIPS"
 		#else:
