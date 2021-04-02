@@ -75,6 +75,8 @@ test=df_calls.reindex(pd.MultiIndex.from_product(
 ## a test array:
 iv=test.impliedVolatility.values.reshape(len(df_calls.index.levels[0]),
 	len(df_calls.index.levels[1]))
+ask=test.ask.values.reshape(len(df_calls.index.levels[0]),
+	len(df_calls.index.levels[1]))
 ## A meshgrid for this:
 x,y=np.meshgrid(df_calls.index.levels[1],df_calls.index.levels[0])
 
@@ -83,3 +85,11 @@ fig=plt.figure()
 ax=plt.axes(projection='3d')
 ax.plot_surface(x,y,-iv,cmap='viridis',edgecolor='none');plt.show()
 #plt.contour(x,y,iv);plt.show()
+
+## test attempt at a spline interpolation:
+spl=splrep(all_strikes[~np.isnan(iv[0,:])],iv[0,:][~np.isnan(iv[0,:])],k=3,
+	xb=iv[0,:][~np.isnan(iv[0,:])][0])
+yspl=splev(all_strikes,spl)
+## two derivatives
+#ddy=splev(all_strikes,spl,der=2)
+#plt.plot(all_strikes,iv[0,:],'o',all_strikes,yspl);plt.show()
