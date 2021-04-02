@@ -311,6 +311,11 @@ cycle_end=pd.Timestamp("1977-04-01")
 cycle_end_dates=np.array([cycle_end])
 cycle_start_dates=np.array([])
 
+## initialize arrays for the market_timing portfolio, and the buy and hold
+## benchmark
+buy_and_hold=np.zeros(len(yc_indicator))
+portfolio=np.zeros(len(yc_indicator))
+
 for i in range(1,len(yc_indicator)):
 	## date for each step:
 	loop_date=yc_indicator.index[i]
@@ -320,7 +325,7 @@ for i in range(1,len(yc_indicator)):
 	inv_check=yc_indicator[i]<0
 	## need to know whether to use 10y zc or 30y zc; if false, use 10y zc
 	## if true, use my preferred levered bond, the 30y zc when buying bonds
-	thirty_zcb=loop_date>=pd.to_datetime("1985-12-02")
+	thirty_zcb=loop_date>=strips30_start
 	## Yield curve has just inverted if the statement below is true	
 	if (inv_check==True and prev_check==False) and exit_bonds==True:
 		## if there is an inversion, continue investing in stocks? 
@@ -578,6 +583,8 @@ for i in range(1,len(yc_indicator)):
 		## not sure if this works for dividends, but simplest use for now
 		## Apparently Shiller dividend data is annualized? not sure why I have to divide by 12
 		cash=cash+dca_inv+nshares*div.loc[loop_date][0]/12.0	
+		## the benchmark portfolio just buys stock and reinvests dividends
+		
 		#print('cash = '+str(cash))
 		#print('number of shares: '+str(nshares))
 		#print(loop_date.strftime('%Y-%m-%d'))
@@ -599,7 +606,10 @@ for i in range(1,len(yc_indicator)):
 			cash=cash-ntemp*(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
 				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start))
-
+	
+	## Mark the portfolio to market for every day in the loop; include also
+	## a total return for a dca SP500 portfolio with reinvested dividends
+	#portfolio[i]=cash+spx['Close'][loop_date]*nshares+
 
 ## total everything up to get value of portfolio		
 vs=nshares*spx['Close'][loop_date]
