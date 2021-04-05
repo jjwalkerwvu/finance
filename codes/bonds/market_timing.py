@@ -52,6 +52,21 @@ market_timing.py
 	Monthly dividends taken from Shiller's website:
 	http://www.econ.yale.edu/~shiller/data.htm
 
+	April 3, 2021 - Needed additions:
+		- 	Find the total return factor from start to end dates, with no 
+			additional money added to the portfolio
+		- 	the portfolio gets marked to market every day within the main 
+			loop, so we can keep track relative to a performance benchmark
+			(here, it's the sp500)
+		-	Compare also to a 60/40 quarterly or monthly rebalance portfolio
+		-	Include another portfolio for bonds only during this time period
+		- 	allow for coupon-bearing bond option
+		-	set up ability to contribute 10% to Eurodollar futures, following
+			a good methodology?
+		-	Make separate script to show an idealized and/or real example of
+			a business cycle including fed funds rate, unemployment, inflation
+		
+
 
 	Some ideas (not all are mutually exclusive) for when to sell:
 		- 	Fed rate has decreased, and has remained constant for 2 or more 
@@ -139,7 +154,7 @@ strips30_start=pd.Timestamp('1985-12-02')
 ## My thought was to use 30 year STRIPS, but the lack of issuance between
 ## February 18, 2002 until February 9, 2006 suggests using 26 for the sake of 
 ## continuity.
-strips_duration=10
+strips_duration=30
 pzc_buy=pzc[pzc.columns[strips_duration-1]]
 
 ## regular yield curve data from FRED:
@@ -286,6 +301,8 @@ buy_bonds=False
 buy_stocks=True
 ## array for uninversion time stamps:
 uninvert_dates=np.array([])
+## timestamps for selling bonds, buying back into stocks array:
+fed_signal_dates=np.array([])
 
 ## Additional variables for "FEDFUNDS" logic
 ## get the most recent decrease and increase before starting the main loop?
@@ -314,7 +331,11 @@ cycle_start_dates=np.array([])
 ## initialize arrays for the market_timing portfolio, and the buy and hold
 ## benchmark
 buy_and_hold=np.zeros(len(yc_indicator))
+bah_shares=0
+bah_cash=0
 portfolio=np.zeros(len(yc_indicator))
+## initial value of bonds
+bond_m2m=0
 
 for i in range(1,len(yc_indicator)):
 	## date for each step:
@@ -471,6 +492,8 @@ for i in range(1,len(yc_indicator)):
 	## true on the exact day it occurs
 	## Also include condition that this must be at least second loop iteration?
 	if ((exit_bonds==True) and (nbonds.size!=0)) and (nshares==0):
+		## record the fed signal.
+		fed_signal_dates=np.append(fed_signal_dates,loop_date)
 		## sell bonds and buy stocks again according to dca rules		
 		buy_bonds=False
 		buy_stocks=True
@@ -484,8 +507,10 @@ for i in range(1,len(yc_indicator)):
 		## price=(pzc.loc[loop_date].SVENY30)*np.exp(rexp*(1-tremaining))
 		#print(str(bond_purch))
 		#print(str(nbonds))
-		telapsed=(
-			(loop_date-bond_purch).astype('timedelta64[D]')/365.25).astype(float)
+		telapsed=np.array(
+			(pd.to_datetime(loop_date)-pd.to_datetime(bond_purch)
+			).astype('timedelta64[D]')).astype(float)/365.25
+		#print(telapsed)
 		
 		#remaining_duration=((strips_duration-np.floor(telapsed))*(
 		#	bond_purch>=strips30_start)+
@@ -494,9 +519,9 @@ for i in range(1,len(yc_indicator)):
 		#print(cash)
 
 		## alternate (improved) attempt; remove the floor function, allow 
-		## telapsed to be a float.
+		## telapsed to be a float. Dont need the minus 1?
 		rem_dur=((strips_duration-telapsed)*(bond_purch>=strips30_start)+
-			(10-telapsed)*(bond_purch<strips30_start))-1
+			(10-telapsed)*(bond_purch<strips30_start))
 		## plug remaining_duration into equation 22 from Gurkayanka; an array
 		yeff=(zc.BETA0.loc[loop_date]+
 			zc.BETA1.loc[loop_date]*(1-np.exp(-rem_dur/zc.TAU1.loc[loop_date])
@@ -583,7 +608,13 @@ for i in range(1,len(yc_indicator)):
 		## not sure if this works for dividends, but simplest use for now
 		## Apparently Shiller dividend data is annualized? not sure why I have to divide by 12
 		cash=cash+dca_inv+nshares*div.loc[loop_date][0]/12.0	
-		## the benchmark portfolio just buys stock and reinvests dividends
+
+		## the benchmark portfolio just buys stock (DCA) and reinvests dividends
+		bah_cash=bah_cash+dca_inv+bah_shares*div.loc[loop_date][0]/12.0	
+		temp_shares=np.floor(bah_cash/spx['Close'][loop_date])		
+		bah_cash=bah_cash-temp_shares*spx['Close'][loop_date]
+		bah_shares=bah_shares+temp_shares
+		## End of benchmark commands here
 		
 		#print('cash = '+str(cash))
 		#print('number of shares: '+str(nshares))
@@ -609,15 +640,41 @@ for i in range(1,len(yc_indicator)):
 	
 	## Mark the portfolio to market for every day in the loop; include also
 	## a total return for a dca SP500 portfolio with reinvested dividends
-	#portfolio[i]=cash+spx['Close'][loop_date]*nshares+
+	## Not sure that this if statement is the most robust, maybe fix later
+	if bond_purch.size>0:
+		telapsed=np.array((
+			(pd.to_datetime(loop_date)-pd.to_datetime(bond_purch)
+			).astype('timedelta64[D]')/365.25).astype(float))
+		#print(telapsed)
+		rem_dur=((strips_duration-telapsed)*(bond_purch>=strips30_start)+
+			(10-telapsed)*(bond_purch<strips30_start))
+		## plug remaining_duration into equation 22 from Gurkayanka; an array
+		yeff=(zc.BETA0.loc[loop_date]+
+			zc.BETA1.loc[loop_date]*(1-np.exp(-rem_dur/zc.TAU1.loc[loop_date])
+			)/(rem_dur/zc.TAU1.loc[loop_date])+
+			zc.BETA2.loc[loop_date]*((1-np.exp(-rem_dur/zc.TAU1.loc[loop_date])
+			)/(rem_dur/zc.TAU1.loc[loop_date])-np.exp(-rem_dur/zc.TAU1.loc[loop_date]))+
+			zc.BETA3.loc[loop_date]*((1-np.exp(-rem_dur/zc.TAU2.loc[loop_date])
+			)/(rem_dur/zc.TAU2.loc[loop_date])-np.exp(-rem_dur/zc.TAU2.loc[loop_date]))
+			)
+		## value of the basket of bonds; new method checks out, gives similar
+		## but slightly higher result than old method above (mar 29, 2021)
+		peff=par_val/(1+yeff/100.0)**(rem_dur)
+		bond_m2m=np.sum(peff*nbonds)
+	else:
+		bond_m2m=0
+	## compute the total value of the portfolio now
+	portfolio[i]=cash+spx['Close'][loop_date]*nshares+bond_m2m
+	## total value of the benchmark
+	buy_and_hold[i]=bah_cash+spx['Close'][loop_date]*bah_shares
 
-## total everything up to get value of portfolio		
-vs=nshares*spx['Close'][loop_date]
-## something more complicated if we end with any bonds
-#if nbonds.size!=0:
-vb=0
-vtot=vs+vb+cash
-print("Total market value of portfolio: "+str(vtot))
+## Use the last element of the portfolio array to get the value at the end
+print("Total market value of portfolio: "+str(portfolio[-1]))
+## print the total of the buy and hold benchmark:
+print('DCA into SP500 and hold benchmark: '+str(buy_and_hold[-1]))
+## The return of this strategy from the start; equivalent to putting the money
+## in at the start and never adding more (dividends are reinvested)
+#stock_portion=
 
 ## plot cycle start/end dates on fed funds/yc_indicator plot with green/red 
 ## circles
@@ -626,3 +683,16 @@ plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_end_dates],'s',markerfacecolor='r',
 	markeredgecolor='r')
 plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_start_dates],'>',markerfacecolor='g',
 	markeredgecolor='g')
+
+## plot performance of the portfolio and the benchmark (use log plot!)
+plt.figure()
+plt.plot(yc_indicator.index,(portfolio),label='Market Timing')
+plt.plot(yc_indicator.index,buy_and_hold,label='Time in the Market')
+plt.yscale('log')
+## Make a legend
+plt.legend(loc='best')
+## tight_layout makes everything fit nicely in the plot
+plt.tight_layout()
+plt.savefig('market_timing_'+str(strips_duration)+'y_bond'+'.png')
+plt.show()
+
