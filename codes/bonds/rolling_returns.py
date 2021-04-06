@@ -121,7 +121,7 @@ plt.title(str(rolling_period)+'-Year Rolling Return')
 spx_cagr=(sp_tot_return**(1.0/rolling_period)-1)*100
 zc_cagr=(zc_return**(1.0/rolling_period)-1)*100
 plt.plot(zc_cagr,'-b',label=str(strips_duration)+'y Annually Rolled Zero')
-plt.plot(spx_cagr,'dk',label='SP500');
+plt.plot(spx_cagr,'dk',label='SP500 Total Return');
 plt.ylabel('CAGR %')
 plt.xlabel('Date')
 plt.legend(loc='best')
