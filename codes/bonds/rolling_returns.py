@@ -21,7 +21,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
 from fred_csv_reader import fred_csv_reader
 from yahoo_csv_reader import yahoo_csv_reader
-#from shiller_excel_reader import shiller_excel_reader 
+from shiller_excel_reader import shiller_excel_reader 
 
 
 ## A function to get the nearest business day
@@ -37,6 +37,39 @@ cal = USFederalHolidayCalendar()
 
 ## spx total return
 spx=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^SP500TR','^SP500TR')
+## load regular spx index:
+sp500=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^GSPC','^GSPC')
+## get shiller data, either from file or from Shiller's website.
+## If you don't put an actual filename, it will pull from Shiller's website.
+shiller=shiller_excel_reader('/home/jjwalker/Desktop/finance/data/stocks/ie_data.xls')
+## prepare a total return for sp500 based on Shiller dividend data (starts at 1871)
+## intersection between shiller's excel sheet and the sp500
+ii=sp500.index.intersection(shiller.index)
+## union between shiller's excel sheet and the sp500 at correct start/end dates
+iu=sp500.index.union(shiller[ii[0]:ii[1]].index)
+## MUST USE COLUMN D, NOT DIVIDEND! DIVIDEND COLUMN CORRESPONDS TO INFL. ADJ.
+#div=(shiller.D[ii[0]:]/12.0).resample('D').fillna(value=0).cumsum()
+div=(shiller.D[ii[0]:]/12.0).resample('D').fillna(value=0)
+## add sp500 closing price to the dividend with the common index
+#sp500_tr=sp500.Close.loc[iu]+div.loc[iu]
+## Or, use pd.merge_asof??
+#sp500tr=pd.merge_asof(sp500,div,on=div.index)
+## simplest method:
+sp500tr=pd.concat([sp500.Close[ii[0]:ii[-1]],div],axis=1)
+## simple loop for now:
+nshares_tr=np.zeros(len(sp500tr))
+value_tr=np.zeros(len(sp500tr))
+## Start with one share
+nshares_tr[0]=1
+value_tr[0]=sp500tr.Close[ii[0]]
+for i in range(1,len(sp500tr)):
+	last_price=sp500tr.Close[:i][~np.isnan(sp500tr.Close[:i])][-1]
+	nshares_tr[i]=nshares_tr[i-1]+(nshares_tr[i-1]*sp500tr.D[i])/last_price
+	value_tr[i]=nshares_tr[i]*sp500tr.Close[i]	
+## add these numpy arrays to the dataframe.
+sp500tr['value_tr']=value_tr.tolist()
+sp500tr['nshares_tr']=nshares_tr.tolist()
+## Should I forward fill the previous sp500 close price to subsequent nans? 
 
 ## Zero coupon yield curve from FRED:
 ## read in data; have to use (7)th line as the header, I don't know why
@@ -66,7 +99,7 @@ end_date=zc.index[-1]
 ## maximum period that we can generate a return for, in days:
 max_period=zc.index[-1]-start_date
 ## desired rolling period, in years:
-rolling_period=30
+rolling_period=20
 ## incremental array to use for each 1 year return period; 
 ## i.e., add this array as a relative delta to each 30 year start date
 ## Maybe pd.DateOffset is better?
@@ -86,7 +119,12 @@ sp_roll_array = pd.DatetimeIndex([get_business_day(d).date()+
 	relativedelta(years=rolling_period) 
 	for d in spx.index[:len(spx[:final_date])]])
 sp_tot_return=(spx.Close[sp_roll_array].values)/(spx.Close[:final_date])
-
+## Here is the shiller data; leave the stuff above for comparison.
+shiller_roll_array = pd.DatetimeIndex([get_business_day(d).date()+
+	relativedelta(years=rolling_period) 
+	for d in sp500tr.index[:len(sp500tr[:final_date])]])
+shiller_tot_return=((sp500tr.value_tr[shiller_roll_array].values)/
+	(sp500tr.value_tr[:final_date]))
 
 ## Make the "main array", all days between start_date and final_date
 roll_array = pd.DatetimeIndex([get_business_day(d).date() 
@@ -120,12 +158,13 @@ plt.figure()
 plt.title(str(rolling_period)+'-Year Rolling Return')
 spx_cagr=(sp_tot_return**(1.0/rolling_period)-1)*100
 zc_cagr=(zc_return**(1.0/rolling_period)-1)*100
-plt.plot(zc_cagr,'-b',label=str(strips_duration)+'y Annually Rolled Zero')
+shiller_cagr=(shiller_tot_return**(1.0/rolling_period)-1)*100
+plt.plot(zc_cagr,'.b',label=str(strips_duration)+'y Annually Rolled Zero')
 plt.plot(spx_cagr,'dk',label='SP500 Total Return');
+plt.plot(shiller_cagr[start_date:],'sg',label='SP500 Total Return, Shiller Dividends')
 plt.ylabel('CAGR %')
 plt.xlabel('Date')
 plt.legend(loc='best')
 plt.tight_layout()
-#plt.show()
 plt.savefig(str(strips_duration)+'y_zc_and_sp500_'+str(rolling_period)+'y_rolling_return.png')
-
+plt.show()
