@@ -6,6 +6,8 @@ Created December 1, 2020
 market_timing.py
 	This script attempts to use a rules-based system for timing financial 
 	markets based on yield curve inversion, and evaluate the results.
+	May want to start the timer when yield curve inverts, not wait until it
+	uninverts
 
 	The idea is to buy leveraged instruments, like long-dated zero coupon
 	bonds, options on the short end of the curve (euro-dollar futures), and 	
@@ -154,7 +156,8 @@ strips30_start=pd.Timestamp('1985-12-02')
 ## My thought was to use 30 year STRIPS, but the lack of issuance between
 ## February 18, 2002 until February 9, 2006 suggests using 26 for the sake of 
 ## continuity.
-strips_duration=30
+## Default: does not allow lower duration 10 years as an input
+strips_duration=10
 pzc_buy=pzc[pzc.columns[strips_duration-1]]
 
 ## regular yield curve data from FRED:
@@ -195,6 +198,8 @@ nshares=0
 #start_date='1985-12-02' 	# this start date is the first month that 30 year 
 							# STRIPS data is available
 start_date='1979-06-01'
+## Trying a different start date?
+
 ## suitable end date; need to error check for weekend, does not seem to work
 ## automatically
 #end_date='2019-12-02'
@@ -222,9 +227,12 @@ nbonds=np.array([])
 
 
 ## prepare dividends; may also consider total return index for post-1988
+## (post-1988 "index" now complete)
 shiller_data=pd.read_excel('/home/jjwalker/Desktop/finance/data/stocks/ie_data.xls',
 	sheetname='Data',header=7)
-#shiller_data['Date'] = pd.to_datetime(shiller_data.Date,infer_datetime_format=True)
+## Switch to doing it this way with the line below:
+## If you don't put an actual filename, it will pull from Shiller's website.
+#shiller=shiller_excel_reader('/home/jjwalker/Desktop/finance/data/stocks/ie_data.xls')
 ## if start date is 1979-06-01 and end date is 2020-08-31, then use 
 ## iloc[1301:1796] as the range; each value corresponds to payment received 
 ## on the respective month
@@ -270,10 +278,11 @@ fedfunds_diff=fedfunds_ffill.diff()
 ## or use 10y - 3mo?
 #yc_indicator=yc['10']-yc['0.25']
 yc_indicator=yc['10']-yc['2']
+## What about using the zero coupon yield curve??
+#yc_indicator=zc.SVENY10-zc.SVENY02
+## The start of whichever indicator you use; need the start of it for later:
+yc_start=yc_indicator[~np.isnan(yc_indicator)].index[0]
 ## I think dropping NANs here is ok and appropriate, and only go from 
-## start_date to end_date. 
-#pd.merge(left=df_with_millions, left_on='date_column',
-#         right=df_with_seven_thousand, right_on='date_column')
 yc_indicator=yc_indicator[start_date:end_date].dropna()
 ## May want to also restructure this to include dates where bonds and stocks 
 ## both have data
@@ -316,14 +325,23 @@ mrff_increase_value=fedfunds_ffill.FEDFUNDS[mrff_increase_date]
 mrff_decrease=temp[temp<0][-1]
 mrff_decrease_date=temp.index[temp<0][-1]
 mrff_decrease_value=fedfunds_ffill.FEDFUNDS[mrff_decrease_date]
+## The number of days that the fed target rate should be constant before  
+## triggering signal; My thinking is that the default should be 1-2 business 
+## quarters (90-180 days)
+fed_const_days=180	## maybe better performance with 210, but a bit "overfit"
 ## threshold for considering the effective fed funds rate "constant"; so it
-## is permitted to be +/- 0.25%
+## is permitted to be +/- 0.25%?
 const_thresh=0.0
 ## start with last cycle complete? CHECK TO MAKE SURE!
 ## Either go through the data and check to see, or write some code to do it
 ## automatically
 cycle_complete=True
 ## last cycle end date?
+## Need to back out to start of time series and end at the start_date 
+## (selected earlier)
+#for i in range(1,len(fedfunds_ffill.FEDFUNDS)):
+#	loop_date=fedfunds_ffill.index[i]
+#	
 cycle_end=pd.Timestamp("1977-04-01")
 cycle_end_dates=np.array([cycle_end])
 cycle_start_dates=np.array([])
@@ -420,17 +438,18 @@ for i in range(1,len(yc_indicator)):
 	mrff_decrease_date=temp.index[temp<0][-1]
 	mrff_decrease_value=fedfunds_ffill.FEDFUNDS[mrff_decrease_date]
 
-	## sum difference to see if we are in a cutting cycle?
-	#cutting_cycle=
-
 	## test if Fed Funds is constant for a 90 day interval or maybe 180?
 	## The constant test for when a cycle ends
-	fed_const_end=abs(fedfunds_diff.FEDFUNDS[
-		loop_date-relativedelta(days=180):loop_date].sum())<=const_thresh
+	#fed_const_end=abs(fedfunds_diff.FEDFUNDS[
+	#	loop_date-relativedelta(days=fed_const_days):loop_date].sum())<=const_thresh
+	## New approach: fedfunds must be constant for the entire interval for 
+	## this to work
+	fed_const_end=(fedfunds_diff.FEDFUNDS[
+		(loop_date-relativedelta(days=fed_const_days)):loop_date]!=0).sum()==0
 
 	## test for cycle start, constant fed funds before a recent decrease?
 	fed_const_start=((abs(fedfunds_diff.FEDFUNDS[
-		loop_date-relativedelta(days=181):
+		loop_date-relativedelta(days=(fed_const_days+1)):
 		loop_date-relativedelta(days=1)].sum()
 		)<=const_thresh) and (mrff_decrease_date>cycle_end))
 
@@ -441,7 +460,8 @@ for i in range(1,len(yc_indicator)):
 		(cycle_complete and (mrff_decrease_date>cycle_end))):
 		##
 		local_max=True
-		cycle_start=yc_indicator.index[i]
+		#cycle_start=yc_indicator.index[i]
+		cycle_start=loop_date
 		cycle_complete=False
 		cycle_start_dates=np.append(cycle_start_dates,cycle_start)
 		#print('Cutting cycle started on: '+ cycle_start.strftime('%Y-%b-%d')) 
@@ -449,7 +469,8 @@ for i in range(1,len(yc_indicator)):
 	## Test for end of cycle; cycle must not have been complete, and the fed
 	## has been constant for 2 business quarters
 	if ((cycle_complete==False) and fed_const_end):
-		cycle_end=yc_indicator.index[i]
+		#cycle_end=yc_indicator.index[i]
+		cycle_end=loop_date
 		cycle_complete=True
 		cycle_end_dates=np.append(cycle_end_dates,cycle_end)
 	
@@ -606,7 +627,8 @@ for i in range(1,len(yc_indicator)):
 	## Frequency
 	if np.datetime64(loop_date.strftime('%Y-%m-%d')) in first_bday_of_month:
 		## not sure if this works for dividends, but simplest use for now
-		## Apparently Shiller dividend data is annualized? not sure why I have to divide by 12
+		## Apparently Shiller dividend data is annualized? not sure why I have 
+		## to divide by 12
 		cash=cash+dca_inv+nshares*div.loc[loop_date][0]/12.0	
 
 		## the benchmark portfolio just buys stock (DCA) and reinvests dividends
@@ -629,14 +651,35 @@ for i in range(1,len(yc_indicator)):
 			nshares=nshares+dca_shares
 		if buy_bonds==True:
 			bond_purch=np.append(bond_purch,loop_date)
+			## Need to get price for ANY duration STRIPS, not just 10/30
+			ypurch=(zc.BETA0.loc[loop_date]+
+				zc.BETA1.loc[loop_date]*(1-np.exp(
+				-strips_duration/zc.TAU1.loc[loop_date]))/
+				(strips_duration/zc.TAU1.loc[loop_date])+
+				zc.BETA2.loc[loop_date]*((1-np.exp(
+				-strips_duration/zc.TAU1.loc[loop_date]))/
+				(strips_duration/zc.TAU1.loc[loop_date])-
+				np.exp(-strips_duration/zc.TAU1.loc[loop_date]))+
+				zc.BETA3.loc[loop_date]*((1-np.exp(
+				-strips_duration/zc.TAU2.loc[loop_date]))/
+				(strips_duration/zc.TAU2.loc[loop_date])-
+				np.exp(-strips_duration/zc.TAU2.loc[loop_date])))
+			## 
+			ppurch=par_val/(1+ypurch/100.0)**strips_duration
 			ntemp=np.floor(cash/(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
-				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start)))
+				np.nan_to_num(ppurch)*(loop_date>=strips30_start)))
+			#ntemp=np.floor(cash/(
+			#	pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
+			#	np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start)))
 			nbonds=np.append(nbonds,ntemp)
 			## update cash position
+			#cash=cash-ntemp*(
+			#	pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
+			#	np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start))
 			cash=cash-ntemp*(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
-				np.nan_to_num(pzc['SVENY30'][loop_date])*(loop_date>=strips30_start))
+				np.nan_to_num(ppurch)*(loop_date>=strips30_start))
 	
 	## Mark the portfolio to market for every day in the loop; include also
 	## a total return for a dca SP500 portfolio with reinvested dividends
@@ -678,21 +721,36 @@ print('DCA into SP500 and hold benchmark: '+str(buy_and_hold[-1]))
 
 ## plot cycle start/end dates on fed funds/yc_indicator plot with green/red 
 ## circles
-plt.plot(fedfunds_ffill.FEDFUNDS,'.k')
+plt.plot(fedfunds_ffill.FEDFUNDS,'-k')
 plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_end_dates],'s',markerfacecolor='r',
 	markeredgecolor='r')
 plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_start_dates],'>',markerfacecolor='g',
 	markeredgecolor='g')
+for xc in uninvert_dates:
+	plt.axvline(x=xc,color='k',linestyle='-')
+## save this fed funds figure??
 
 ## plot performance of the portfolio and the benchmark (use log plot!)
 plt.figure()
-plt.plot(yc_indicator.index,(portfolio),label='Market Timing')
-plt.plot(yc_indicator.index,buy_and_hold,label='Time in the Market')
+plt.title('Market Timing using '+str(strips_duration)+
+	'y STRIPS at first Uninversion')
+plt.plot(yc_indicator.index,(portfolio),label='Market Timing: $'+
+	str(int(round(portfolio[-1]))))
+plt.plot(yc_indicator.index,buy_and_hold,label='Time in the SP500 (Only) $'+
+	str(int(round(buy_and_hold[-1]))))
+## plot some vertical lines; x=first uninversions
+for xc in uninvert_dates:
+	plt.axvline(x=xc,color='r',linestyle='-')
+## plot the fed signal dates, when we sell bonds and go to stocks
+for xc in fed_signal_dates:
+	plt.axvline(x=xc,color='g',linestyle=':')
 plt.yscale('log')
 ## Make a legend
 plt.legend(loc='best')
+plt.ylabel('Dollar Amount')
+plt.xlabel('Date')
 ## tight_layout makes everything fit nicely in the plot
 plt.tight_layout()
-plt.savefig('market_timing_'+str(strips_duration)+'y_bond'+'.png')
+plt.savefig('market_timing_'+str(strips_duration)+'y_STRIPS'+'.png')
 plt.show()
 
