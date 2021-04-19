@@ -120,7 +120,7 @@ sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/bonds')
 sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
 from fred_csv_reader import fred_csv_reader
 from yahoo_csv_reader import yahoo_csv_reader
-#from shiller_excel_reader import shiller_excel_reader 
+from shiller_excel_reader import shiller_excel_reader 
 
 
 ## A function to get the nearest business day
@@ -157,7 +157,7 @@ strips30_start=pd.Timestamp('1985-12-02')
 ## February 18, 2002 until February 9, 2006 suggests using 26 for the sake of 
 ## continuity.
 ## Default: does not allow lower duration 10 years as an input
-strips_duration=10
+strips_duration=29
 pzc_buy=pzc[pzc.columns[strips_duration-1]]
 
 ## regular yield curve data from FRED:
@@ -232,13 +232,18 @@ shiller_data=pd.read_excel('/home/jjwalker/Desktop/finance/data/stocks/ie_data.x
 	sheetname='Data',header=7)
 ## Switch to doing it this way with the line below:
 ## If you don't put an actual filename, it will pull from Shiller's website.
-#shiller=shiller_excel_reader('/home/jjwalker/Desktop/finance/data/stocks/ie_data.xls')
+shiller=shiller_excel_reader('/home/jjwalker/Desktop/finance/data/stocks/ie_data.xls')
+## Easier to just forward fill the dividend information, so that if the actual
+## first day of the month is not included because it is a weekend or holiday,
+## the next entry in div will have the correct dividend information.
+div=(shiller.D/12.0).resample('D').ffill()
+## 
 ## if start date is 1979-06-01 and end date is 2020-08-31, then use 
 ## iloc[1301:1796] as the range; each value corresponds to payment received 
 ## on the respective month
-div=shiller_data.D[1301:1796]
-div=pd.DataFrame(div.values,index=first_bday_of_month)
-div.index=pd.to_datetime(div.index)
+#div=shiller_data.D[1301:1796]
+#div=pd.DataFrame(div.values,index=first_bday_of_month)
+#div.index=pd.to_datetime(div.index)
 
 
 ## FED funds rate:
@@ -629,10 +634,13 @@ for i in range(1,len(yc_indicator)):
 		## not sure if this works for dividends, but simplest use for now
 		## Apparently Shiller dividend data is annualized? not sure why I have 
 		## to divide by 12
-		cash=cash+dca_inv+nshares*div.loc[loop_date][0]/12.0	
+		#cash=cash+dca_inv+nshares*div.loc[loop_date][0]/12.0	
+		## Alternative:
+		cash=cash+dca_inv+nshares*div.loc[loop_date]
 
 		## the benchmark portfolio just buys stock (DCA) and reinvests dividends
-		bah_cash=bah_cash+dca_inv+bah_shares*div.loc[loop_date][0]/12.0	
+		#bah_cash=bah_cash+dca_inv+bah_shares*div.loc[loop_date][0]/12.0
+		bah_cash=bah_cash+dca_inv+bah_shares*div.loc[loop_date]	
 		temp_shares=np.floor(bah_cash/spx['Close'][loop_date])		
 		bah_cash=bah_cash-temp_shares*spx['Close'][loop_date]
 		bah_shares=bah_shares+temp_shares
@@ -721,14 +729,23 @@ print('DCA into SP500 and hold benchmark: '+str(buy_and_hold[-1]))
 
 ## plot cycle start/end dates on fed funds/yc_indicator plot with green/red 
 ## circles
+plt.title('Fed Funds Target')
 plt.plot(fedfunds_ffill.FEDFUNDS,'-k')
 plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_end_dates],'s',markerfacecolor='r',
-	markeredgecolor='r')
+	markeredgecolor='r',label='Cutting Cycle Ends')
 plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_start_dates],'>',markerfacecolor='g',
-	markeredgecolor='g')
+	markeredgecolor='g',label='Cutting Cycle Starts')
 for xc in uninvert_dates:
-	plt.axvline(x=xc,color='k',linestyle='-')
+	plt.axvline(x=xc,color='r',linestyle='-')
+## plot the fed signal dates, when we sell bonds and go to stocks
+for xc in fed_signal_dates:
+	plt.axvline(x=xc,color='g',linestyle=':')
+plt.legend(loc='best')
+plt.xlabel('Date')
+plt.ylabel('Interest Rate (%)')
+plt.tight_layout()
 ## save this fed funds figure??
+plt.savefig('fed_signal_plot'+'.png')
 
 ## plot performance of the portfolio and the benchmark (use log plot!)
 plt.figure()
@@ -751,6 +768,6 @@ plt.ylabel('Dollar Amount')
 plt.xlabel('Date')
 ## tight_layout makes everything fit nicely in the plot
 plt.tight_layout()
-plt.savefig('market_timing_'+str(strips_duration)+'y_STRIPS'+'.png')
+#plt.savefig('market_timing_'+str(strips_duration)+'y_STRIPS'+'.png')
 plt.show()
 
