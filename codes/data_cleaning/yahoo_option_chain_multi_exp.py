@@ -53,7 +53,8 @@ def yahoo_option_chain_multi_exp(write_path,ticker):
 	target_dir=write_path
 
 	## First get expiry dates.
-	url_string=('https://query1.finance.yahoo.com/v7/finance/options/'+ticker)
+	## use query1.stuff or query2?
+	url_string=('https://query2.finance.yahoo.com/v7/finance/options/'+ticker)
 	bs_json = pd.io.json.read_json(url_string)
 	## found through trial and error, hopefully all yahoo option chains 
 	## look like this
@@ -115,7 +116,26 @@ def yahoo_option_chain_multi_exp(write_path,ticker):
 	filename=path+'/'+tnow_str+'_'+ticker+'_full_chain'+'.txt'
 	
 	option_chain.to_json(filename)
-
+	## Here is how to open it back up again.
+	#bs_json=pd.io.json.read_json(filename)
+	#bs_json[0].iloc[0]['optionChain']['result'][0]['options'][0]['calls']
+	#pframes=[pd.DataFrame(
+	#	chain['optionChain']['result'][0]['options'][0]['puts']) 
+	#	for chain in bs_json[0].iloc[:]]
+	#cframes=[pd.DataFrame(
+	#	chain['optionChain']['result'][0]['options'][0]['calls']) 
+	#	for chain in bs_json[0].iloc[:]]
+	#df_puts=pd.concat(pframes)
+	#df_calls=pd.concat(cframes)
+	## merge on strike:
+	#df=df_calls.merge(df_puts,how='outer',on=['expiration','strike'],suffixes=('_c','_p'))
+	#df.expiration=df.expiration.apply(lambda d: datetime.utcfromtimestamp(d))	
+	#df.lastTradeDate_c=df.lastTradeDate_c.apply(lambda d: datetime.utcfromtimestamp(d))
+	#df.lastTradeDate_p=df.lastTradeDate_p.apply(lambda d: datetime.utcfromtimestamp(d))
+	#df.set_index(['expiration','strike'],inplace=True)
+	#df=df.reindex(pd.MultiIndex.from_product(
+	#	[df.index.levels[0],df.index.levels[1].unique()],
+	#	names=['expiration','strike']),fill_value=np.NaN)
 	##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	## Clean up the data for output variables of this function!
 	#strikes=bs_json['optionChain']['result'][0][entries[2]]
@@ -145,20 +165,35 @@ def yahoo_option_chain_multi_exp(write_path,ticker):
 	
 	## make a multi index first?
 	#strike=df_calls.strike.unique()
-	#index=pd.MultiIndex.from_product([map(str,expiry_dates),strike],names=[expiry_dates,strike])
+	#index=pd.MultiIndex.from_product([map(str,expiry_dates),strike],
+	#	names=[expiry_dates,strike])
 
 	## I should make it so that the index level after expiry dates is strike
 	## price
 	df_puts=pd.concat(pframes,ignore_index=True)
 	## is now a good time to convert expiration column to pandas datetime?
-	df_puts.set_index(['expiration','strike'],inplace=True)
+	#df_puts.set_index(['expiration','strike'],inplace=True)
 	#df_puts = pd.concat(pframes, keys=expiry_dates,names=['expiry_date','strike'])
 	## do the same for calls:
 	df_calls=pd.concat(cframes,ignore_index=True)
-	df_calls.set_index(['expiration','strike'],inplace=True)
+	#df_calls.set_index(['expiration','strike'],inplace=True)
+
+	## New method: Make one dataframe for calls and puts
+	## merge on strike:
+	df=df_calls.merge(df_puts,how='outer',on=['strike','expiration'],suffixes=('_c','_p'))
+	df.expiration=df.expiration.apply(lambda d: datetime.utcfromtimestamp(d))	
+	## Last trade dates may have NaN entries, so clean these outside of here?
+	#df.lastTradeDate_c=df.lastTradeDate_c.apply(lambda d: datetime.utcfromtimestamp(d))
+	#df.lastTradeDate_p=df.lastTradeDate_p.apply(lambda d: datetime.utcfromtimestamp(d))
+	df.set_index(['expiration','strike'],inplace=True)
+	df=df.reindex(pd.MultiIndex.from_product(
+		[df.index.levels[0],df.index.levels[1].unique()],
+		names=['expiration','strike']),fill_value=np.NaN)
+
+
 	## old method:
 	#df_calls = pd.concat(cframes, keys=expiry_dates)
-	## should I join the two dataframes?
+	## should I join the two dataframes, calls and puts?
 	## can index the different expiration dates by key:
 	## (You will likely use this functionality in scripts that call this
 	## function) 
@@ -166,6 +201,9 @@ def yahoo_option_chain_multi_exp(write_path,ticker):
 
 	## should I put into the dataframe: tnow, time to expiration for each
 	## option, and the spot price?
+	## Need also risk-free rate from scraped bond data for each expiry
+	## (separate bond-scraper from this function?)
+
 
 	## should expiry dates be transformed to a regular datetime?
 	#datetime.utcfromtimestamp(expiry_dates)+timedelta(hours=16)
@@ -179,5 +217,5 @@ def yahoo_option_chain_multi_exp(write_path,ticker):
 	#df_attempt=pd.DataFrame(attempt[0].iloc[35]['optionChain']['result'][0]
 	#	['options'][0]['puts'])	
 
-	return tnow,expiry_dates,spot_price,df_calls,df_puts
+	return tnow,expiry_dates,spot_price,df
 
