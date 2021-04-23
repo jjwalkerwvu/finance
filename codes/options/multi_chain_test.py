@@ -27,6 +27,7 @@ import sys
 import json
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
+from matplotlib.colors import LogNorm
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
 from yahoo_option_chain_multi_exp import yahoo_option_chain_multi_exp
@@ -49,11 +50,21 @@ path='/home/jjwalker/Desktop/finance/data/options'
 #t_plus_30=pd.to_datetime('today').now()+timedelta(days=dte)
 #input_date=time.mktime(t_plus_30.timetuple())
 
-#tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker)
+tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker)
+
+## Do reindexing and cleaning in here:
+df.expiration=df.expiration.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)	
+## Last trade dates may have NaN entries, so clean these outside of here?
+df.lastTradeDate_c=df.lastTradeDate_c.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)
+df.lastTradeDate_p=df.lastTradeDate_p.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)
+df.set_index(['expiration','strike'],inplace=True)
+df=df.reindex(pd.MultiIndex.from_product(
+	[df.index.levels[0],df.index.levels[1].unique()],
+	names=['expiration','strike']),fill_value=np.NaN)
 
 ## recalculate tnow if necessary:
 timezone='CET'
-tnow=pd.to_datetime('today').now().tz_localize(timezone).tz_convert('US/Eastern')
+#tnow=pd.to_datetime('today').now().tz_localize(timezone).tz_convert('US/Eastern')
 ## For now, convert utc timestamp to datetime; put into yahoo_option_chain_multi_exp.py later
 #dexp=(pd.DatetimeIndex([
 #	datetime.utcfromtimestamp(date) for date in df.index.levels[0]]))
@@ -158,8 +169,10 @@ plt.figure()
 plt.subplot(1,2,1)
 plt.title(ticker+' Calls')
 plt.scatter(xclean_c.flatten(),ask_clean_c.flatten(),
-	c=np.log10(yclean_c.flatten()-np.min(yclean_c.flatten())),
-	cmap='cool',edgecolor='none')
+	c=yclean_c.flatten(),
+	cmap='cool',edgecolor='none',norm=LogNorm())
+cbar=plt.colorbar(orientation="horizontal")
+cbar.set_label('DTE')
 plt.yscale('log')
 ## use zero bound for strikes
 plt.xlim(0)
@@ -171,8 +184,10 @@ plt.xlabel('Strike')
 plt.subplot(1,2,2)
 plt.title(ticker+' Puts')
 plt.scatter(xclean_p.flatten(),ask_clean_p.flatten(),
-	c=np.log10(yclean_p.flatten()-np.min(yclean_p.flatten())),
-	cmap='hot',edgecolor='none')
+	c=yclean_p.flatten(),
+	cmap='hot',edgecolor='none',norm=LogNorm())
+cbar=plt.colorbar(orientation="horizontal")
+cbar.set_label('DTE')
 plt.yscale('log')
 ## use zero bound for strikes
 plt.xlim(0)
@@ -195,8 +210,10 @@ plt.figure()
 plt.subplot(1,2,1)
 plt.title(ticker+' Calls')
 plt.scatter(xclean_c.flatten(),iv_clean_c.flatten(),
-	c=np.log10(yclean_c.flatten()-np.min(yclean_c.flatten())),
-	cmap='cool',edgecolor='none')
+	c=yclean_c.flatten(),
+	cmap='cool',edgecolor='none',norm=LogNorm())
+cbar=plt.colorbar(orientation="horizontal")
+cbar.set_label('DTE')
 ## use zero bound for strikes
 plt.xlim(left=0)
 plt.ylim(bottom=0,top=iv_max)
@@ -208,8 +225,10 @@ plt.xlabel('Strike')
 plt.subplot(1,2,2)
 plt.title(ticker+' Puts')
 plt.scatter(xclean_p.flatten(),iv_clean_p.flatten(),
-	c=np.log10(yclean_p.flatten()-np.min(yclean_p.flatten())),
-	cmap='hot',edgecolor='none')
+	c=yclean_p.flatten(),
+	cmap='hot',edgecolor='none',norm=LogNorm())
+cbar=plt.colorbar(orientation="horizontal")
+cbar.set_label('DTE')
 ## use zero bound for strikes
 plt.xlim(left=0)
 plt.ylim(bottom=0,top=iv_max)
@@ -217,7 +236,6 @@ plt.ylim(bottom=0,top=iv_max)
 plt.grid(b=True, which='major', color='k', linestyle=':',linewidth=2)
 plt.grid(b=True, which='minor', color='k', linestyle=':')
 plt.xlabel('Strike')
-## Need to put colorbars somewhere...
 plt.tight_layout()
 ## save in the same path where you got the file?
 write_path=path+tnow.strftime("/%Y/%m/%d")
