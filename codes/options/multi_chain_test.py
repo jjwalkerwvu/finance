@@ -50,17 +50,26 @@ path='/home/jjwalker/Desktop/finance/data/options'
 #t_plus_30=pd.to_datetime('today').now()+timedelta(days=dte)
 #input_date=time.mktime(t_plus_30.timetuple())
 
-tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker)
+## read from a specific file
+filename=path+'/2021/04/23/2021_04_23_13_55_^SPX_full_chain.txt'
+#filename=path+'/2021/04/16/2021_04_16_17_11_^SPX_full_chain.txt'
+
+tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(filename,ticker,scrape=False)
+#tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker,scrape=True)
 
 ## Do reindexing and cleaning in here:
+## Do I need to add the 16 hour time delta?
 df.expiration=df.expiration.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)	
 ## Last trade dates may have NaN entries, so clean these outside of here?
-df.lastTradeDate_c=df.lastTradeDate_c.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)
-df.lastTradeDate_p=df.lastTradeDate_p.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)
+#df.lastTradeDate_c=df.lastTradeDate_c.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)
+#df.lastTradeDate_p=df.lastTradeDate_p.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)
 df.set_index(['expiration','strike'],inplace=True)
 df=df.reindex(pd.MultiIndex.from_product(
 	[df.index.levels[0],df.index.levels[1].unique()],
 	names=['expiration','strike']),fill_value=np.NaN)
+
+## write path for plots
+write_path=path+tnow.strftime("/%Y/%m/%d")
 
 ## recalculate tnow if necessary:
 timezone='CET'
@@ -71,6 +80,7 @@ timezone='CET'
 #exp_dates=np.array(df_calls.index.levels[0])
 dexp=np.array(df.index.levels[0])
 ## texp, in days, float array?
+tnow=tnow.tz_localize('US/Eastern')
 texp=np.array((df.index.levels[0].tz_localize('US/Eastern')-tnow)/np.timedelta64(1,'D'))
 
 ## time to expiration, from dnow and dexp, in days:
@@ -124,15 +134,12 @@ x,y=np.meshgrid(df.index.levels[1],texp)
 ## IV cannot be zero.
 ## Also, we should ensure that the ask/bid price of options has a non-zero
 ## intrinsic value for (S-k)>0. Otherwise arbitrage is possible.
-## How to implement this? Something like:
-#ask<np.max(spot_price-all_strikes,0)
-#bid<np.max(spot_price-all_strikes,0)
+## How to implement this? Something like: ask_c<np.max(spot_price-x,0)
+unfair_call=((ask_c<(spot_price-x))&(x<spot_price))
+unfair_put=((ask_p<(x-spot_price))&(x>spot_price))
 ## I was also considering enforcing some kind of monotonicy for ask/bid data
-clean_conditions_c=(np.isnan(volume_c))|(iv_c<=0)|(ask_c<=0)|(bid_c<=0)
-clean_conditions_p=(np.isnan(volume_p))|(iv_p<=0)|(ask_p<=0)|(bid_p<=0)
-## better attempt with where and making masked array??
-#iv_clean=iv[np.ma.masked_where(~np.isnan(volume),volume)].reshape(len(df_calls.index.levels[0]),
-#	len(df_calls.index.levels[1]))
+clean_conditions_c=((np.isnan(volume_c))|(iv_c<=0)|(ask_c<=0)|(bid_c<=0)|unfair_call)
+clean_conditions_p=((np.isnan(volume_p))|(iv_p<=0)|(ask_p<=0)|(bid_p<=0)|unfair_call)
 
 ## clean all the relevant arrays according to our conditions
 ask_clean_c=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_c,ask_c))
@@ -160,6 +167,9 @@ yclean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,y))
 ## two derivatives
 #ddy=splev(all_strikes,spl,der=2)
 #plt.plot(all_strikes,iv[0,:],'o',all_strikes,yspl);plt.show()
+
+## testing with cubic splines:
+#spl=splrep(xclean_c[1,:],ask_clean_c[1,:],k=3,xb=all_strikes[0],xe=all_strikes[-1])
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Maybe a simpler plot to use in the meantime until I get surfaces working?
@@ -197,7 +207,6 @@ plt.xlabel('Strike')
 ## Need to put colorbars somewhere...
 plt.tight_layout()
 ## save in the same path where you got the file?
-write_path=path+tnow.strftime("/%Y/%m/%d")
 if not os.path.exists(write_path):
 	os.makedirs(write_path)
 plt.savefig(write_path+'/'+ticker+'_at_time_'+tnow.strftime('%Y_%b_%d_%H_%M')+
@@ -238,7 +247,6 @@ plt.grid(b=True, which='minor', color='k', linestyle=':')
 plt.xlabel('Strike')
 plt.tight_layout()
 ## save in the same path where you got the file?
-write_path=path+tnow.strftime("/%Y/%m/%d")
 if not os.path.exists(write_path):
 	os.makedirs(write_path)
 plt.savefig(write_path+'/'+ticker+'_at_time_'+tnow.strftime('%Y_%b_%d_%H_%M')+
