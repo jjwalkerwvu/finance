@@ -147,9 +147,9 @@ zc01=zc['SVENY01']
 zc30=zc['SVENY30']
 ## the market price of the 30 year zc bond:
 par_val=1000
-p30=par_val/(1+zc30/100)**30
+p30=par_val/(1+zc30/200)**(2*30)
 ## calculate market prices right now, before we even start:
-pzc=par_val/(1+zc[zc.columns[67:97]]/100.0)**range(1,31)
+pzc=par_val/((1+zc[zc.columns[67:97]]/200.0)**2.0)**(range(1,31))
 ## 30 year STRIPS start date
 strips30_start=pd.Timestamp('1985-12-02')
 ## Duration of zero-coupon bond that you want to buy when yield curve inverts?
@@ -157,7 +157,7 @@ strips30_start=pd.Timestamp('1985-12-02')
 ## February 18, 2002 until February 9, 2006 suggests using 26 for the sake of 
 ## continuity.
 ## Default: does not allow lower duration 10 years as an input
-strips_duration=29
+strips_duration=10
 pzc_buy=pzc[pzc.columns[strips_duration-1]]
 
 ## regular yield curve data from FRED:
@@ -472,9 +472,10 @@ for i in range(1,len(yc_indicator)):
 		#print('Cutting cycle started on: '+ cycle_start.strftime('%Y-%b-%d')) 
 
 	## Test for end of cycle; cycle must not have been complete, and the fed
-	## has been constant for 2 business quarters
-	if ((cycle_complete==False) and fed_const_end):
-		#cycle_end=yc_indicator.index[i]
+	## has been constant for 2 business quarters.
+	## 2021 April 20: Maybe allow for cycle end if the fed funds rate starts
+	## increasing again? (Fed Funds goes back up from previous value)
+	if ((cycle_complete==False) and (fed_const_end or (fedfunds_diff.FEDFUNDS[loop_date]>0))):
 		cycle_end=loop_date
 		cycle_complete=True
 		cycle_end_dates=np.append(cycle_end_dates,cycle_end)
@@ -559,7 +560,7 @@ for i in range(1,len(yc_indicator)):
 			)
 		## value of the basket of bonds; new method checks out, gives similar
 		## but slightly higher result than old method above (mar 29, 2021)
-		peff=par_val/(1+yeff/100.0)**(rem_dur)
+		peff=par_val/(1+yeff/200.0)**(2*rem_dur)
 		cash=np.sum(peff*nbonds)
 
 		
@@ -585,7 +586,7 @@ for i in range(1,len(yc_indicator)):
 			zc.BETA3.loc[loop_date]*((1-np.exp(-trem/zc.TAU2.loc[loop_date])
 			)/(trem/zc.TAU2.loc[loop_date])-np.exp(-trem/zc.TAU2.loc[loop_date]))
 			)
-		pbond=par_val/(1+yrem/100.0)**(trem)
+		pbond=par_val/(1+yrem/200.0)**(2*trem)
 		br=((pbond-
 			pzc['SVENY10'].loc[uninvert_dates[-1]])/
 			pzc['SVENY10'].loc[uninvert_dates[-1]])
@@ -673,7 +674,7 @@ for i in range(1,len(yc_indicator)):
 				(strips_duration/zc.TAU2.loc[loop_date])-
 				np.exp(-strips_duration/zc.TAU2.loc[loop_date])))
 			## 
-			ppurch=par_val/(1+ypurch/100.0)**strips_duration
+			ppurch=par_val/(1+ypurch/200.0)**(2*strips_duration)
 			ntemp=np.floor(cash/(
 				pzc['SVENY10'][loop_date]*(loop_date<strips30_start)+
 				np.nan_to_num(ppurch)*(loop_date>=strips30_start)))
@@ -710,7 +711,7 @@ for i in range(1,len(yc_indicator)):
 			)
 		## value of the basket of bonds; new method checks out, gives similar
 		## but slightly higher result than old method above (mar 29, 2021)
-		peff=par_val/(1+yeff/100.0)**(rem_dur)
+		peff=par_val/(1+yeff/200.0)**(2*rem_dur)
 		bond_m2m=np.sum(peff*nbonds)
 	else:
 		bond_m2m=0
@@ -719,18 +720,21 @@ for i in range(1,len(yc_indicator)):
 	## total value of the benchmark
 	buy_and_hold[i]=bah_cash+spx['Close'][loop_date]*bah_shares
 
+## Amount of time from start to end dates; use to find cagr, etc.
+eta=(pd.to_datetime(end_date)-pd.to_datetime(start_date)).days/365.2422
+## The return of this strategy from the start; equivalent to putting the money
+## in at the start and never adding more (dividends are reinvested)
+#stock_portion=
 ## Use the last element of the portfolio array to get the value at the end
 print("Total market value of portfolio: "+str(portfolio[-1]))
 ## print the total of the buy and hold benchmark:
 print('DCA into SP500 and hold benchmark: '+str(buy_and_hold[-1]))
-## The return of this strategy from the start; equivalent to putting the money
-## in at the start and never adding more (dividends are reinvested)
-#stock_portion=
 
 ## plot cycle start/end dates on fed funds/yc_indicator plot with green/red 
 ## circles
 plt.title('Fed Funds Target')
-plt.plot(fedfunds_ffill.FEDFUNDS,'-k')
+plt.plot(fedfunds_ffill.FEDFUNDS,'-k',label='Fed Funds')
+plt.plot(yc['10'],label='10y Bond Yield')
 plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_end_dates],'s',markerfacecolor='r',
 	markeredgecolor='r',label='Cutting Cycle Ends')
 plt.plot(fedfunds_ffill.FEDFUNDS.loc[cycle_start_dates],'>',markerfacecolor='g',
