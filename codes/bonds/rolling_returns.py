@@ -70,6 +70,7 @@ for i in range(1,len(sp500tr)):
 sp500tr['value_tr']=value_tr.tolist()
 sp500tr['nshares_tr']=nshares_tr.tolist()
 ## Should I forward fill the previous sp500 close price to subsequent nans? 
+print('SP500 total return from Shiller data now complete.')
 
 ## Zero coupon yield curve from FRED:
 ## read in data; have to use (7)th line as the header, I don't know why
@@ -82,7 +83,7 @@ zc.set_index('Date',inplace=True)
 ## the market price of the 30 year zc bond:
 par_val=1000
 ## calculate market prices right now, before we even start:
-pzc=par_val/(1+zc[zc.columns[67:97]]/100.0)**range(1,31)
+pzc=par_val/((1+zc[zc.columns[67:97]]/200)**2)**(range(1,31))
 ## 30 year STRIPS start date
 #strips30_start=pd.Timestamp('1985-12-02')
 start_date=pd.to_datetime('1985-12-02')
@@ -99,7 +100,7 @@ end_date=zc.index[-1]
 ## maximum period that we can generate a return for, in days:
 max_period=zc.index[-1]-start_date
 ## desired rolling period, in years:
-rolling_period=20
+rolling_period=30
 ## incremental array to use for each 1 year return period; 
 ## i.e., add this array as a relative delta to each 30 year start date
 ## Maybe pd.DateOffset is better?
@@ -143,9 +144,25 @@ for i in range(len(roll_array)):
 		get_business_day(
 		roll_array[i]+relativedelta(years=j+1)-relativedelta(days=5)) 
 		for j in range(rolling_period)])
-
-	roll_return[i]=np.prod((pzc_sell.loc[sell_date].values)/
-		(pzc_buy.loc[buy_date].values))
+	
+	## Use Svensson model to obtain bond price.
+	thold=(sell_date.to_pydatetime()-buy_date.to_pydatetime()).astype(
+		'timedelta64[D]').astype(float)/365.25
+	rem_dur=strips_duration-thold
+	yeff=(zc.BETA0.loc[sell_date]+
+			zc.BETA1.loc[sell_date]*(1-np.exp(-rem_dur/zc.TAU1.loc[sell_date])
+			)/(rem_dur/zc.TAU1.loc[sell_date])+
+			zc.BETA2.loc[sell_date]*((1-np.exp(-rem_dur/zc.TAU1.loc[sell_date])
+			)/(rem_dur/zc.TAU1.loc[sell_date])-np.exp(-rem_dur/zc.TAU1.loc[sell_date]))+
+			zc.BETA3.loc[sell_date]*((1-np.exp(-rem_dur/zc.TAU2.loc[sell_date])
+			)/(rem_dur/zc.TAU2.loc[sell_date])-np.exp(-rem_dur/zc.TAU2.loc[sell_date]))
+			)
+	peff=par_val/(1+yeff/200.0)**(2*rem_dur)
+	
+	roll_return[i]=np.prod((peff.values)/(pzc_buy.loc[buy_date].values))
+	
+	#roll_return[i]=np.prod((pzc_sell.loc[sell_date].values)/
+	#	(pzc_buy.loc[buy_date].values))
 
 ## Make a data frame of the rolling returns for simplicity:
 zc_return=pd.DataFrame(roll_return,index=roll_array,columns=['zc_return'])
@@ -160,11 +177,13 @@ spx_cagr=(sp_tot_return**(1.0/rolling_period)-1)*100
 zc_cagr=(zc_return**(1.0/rolling_period)-1)*100
 shiller_cagr=(shiller_tot_return**(1.0/rolling_period)-1)*100
 plt.plot(zc_cagr,'.b',label=str(strips_duration)+'y Annually Rolled Zero')
-plt.plot(spx_cagr,'dk',label='SP500 Total Return');
-plt.plot(shiller_cagr[start_date:],'sg',label='SP500 Total Return, Shiller Dividends')
+plt.plot(spx_cagr,'dk',markerfacecolor='k',markeredgecolor='k',
+	label='SP500 Total Return');
+plt.plot(shiller_cagr[start_date:],'sg',markerfacecolor='g',markeredgecolor='g',
+	label='SP500 Total Return, Shiller Dividends')
 plt.ylabel('CAGR %')
 plt.xlabel('Date')
 plt.legend(loc='best')
 plt.tight_layout()
-plt.savefig(str(strips_duration)+'y_zc_and_sp500_'+str(rolling_period)+'y_rolling_return.png')
+#plt.savefig(str(strips_duration)+'y_zc_and_sp500_'+str(rolling_period)+'y_rolling_return.png')
 plt.show()
