@@ -175,6 +175,11 @@ yc.rename(columns={'DGS1MO':'0.083','DGS3MO':'0.25','DGS6MO':'0.5','DGS1':'1',
 yc=yc[np.argsort(yc.columns.astype(float))]
 ## standard us treasury maturities
 xtemp = np.array(yc.columns.astype(float))
+## Possibly a more comprehensive option:
+yield_history=pd.read_csv('/Users/jeff/Desktop/finance/data/us_economic_data/constant-maturity-treasu.csv')
+yield_history.DateTime=pd.to_datetime(yield_history.DateTime,
+                                      infer_datetime_format=True)
+yield_history.set_index('DateTime',inplace=True)
 
 ## data for spx: (or use ^GSPC)
 ## EVEN BETTER! Use sp500TR, the sp500 total return index which assumes 
@@ -183,6 +188,7 @@ xtemp = np.array(yc.columns.astype(float))
 spx=yahoo_csv_reader('/home/jjwalker/Desktop/finance/data/stocks/^GSPC','^GSPC')
 ## SPX daily return, in case we need it:
 #spx_drf=spx.Close[1:].values/(spx.Close[:-1])
+
 
 
 ## DCA inputs:
@@ -254,6 +260,10 @@ fedfunds_monthly_path='/home/jjwalker/Desktop/finance/data/us_economic_data/FEDF
 ## The target rate, from https://fred.stlouisfed.org/series/DFEDTAR and 
 ## https://www.federalreserve.gov/monetarypolicy/openmarket.htm
 fedfunds_target_path='/home/jjwalker/Desktop/finance/data/us_economic_data/fedfunds_target'
+## To extend the dataset further back in time, use the NY Fed discount rate 
+## from FRED: M13009USM156NNBR
+nyfedfunds='/Users/jeff/Desktop/finance/data/us_economic_data/M13009USM156NNBR.csv'
+#
 fedfunds_monthly=fred_csv_reader(fedfunds_monthly_path)
 fedfunds_target=fred_csv_reader(fedfunds_target_path)
 ## to bin the pre-1982 monthly data to nearest 0.25%:
@@ -267,10 +277,15 @@ ffm_end=fedfunds_target.index[0]-relativedelta(days=1)
 ## rename columns:
 fedfunds_target.rename(columns={fedfunds_target.columns[0]:ffm.columns[0]},
 	inplace=True)
+## same for nyfed data:
+nyfedfunds.rename(columns={nyfedfunds.columns[0]:ffm.columns[0]},inplace=True)
 ## Now merge the datasets; use merge instead of join because there should be
 ## no elements in common.
 #fedfunds_result=ffm[ffm_start:ffm_end].merge(fedfunds_target,how='outer')
-fedfunds_result=pd.concat([ffm[ffm_start:ffm_end],fedfunds_target])
+#fedfunds_result=pd.concat([ffm[ffm_start:ffm_end],fedfunds_target])
+## alternative method:
+fedfunds_result=pd.concat([nyfedfunds,
+    ffm[nyfedfunds.index[-1]+relativedelta(days=1):ffm_end],fedfunds_target])
 ## I think forward fill is the best way to display the monthly data, in a daily format
 fedfunds_ffill=fedfunds_result.resample('D').ffill()
 ## this may be helpful

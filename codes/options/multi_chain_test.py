@@ -17,6 +17,7 @@ import pandas as pd
 import numpy as np
 ## I wanted to use scipy.interpolate.CubicSpline, but I cannot get it to import
 from scipy.interpolate import splev, splrep
+from scipy.interpolate import CubicSpline
 from datetime import datetime
 from datetime import date
 from datetime import timedelta
@@ -29,12 +30,13 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from matplotlib.colors import LogNorm
 # insert at 1, 0 is the script path (or '' in REPL)
-sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
+sys.path.insert(1, '/Users/Jeff/Desktop/finance/codes/data_cleaning')
 from yahoo_option_chain_multi_exp import yahoo_option_chain_multi_exp
 ## insert the path corresponding to bs_analytical solver; we may need this 
 ## function!
 # insert at 1, 0 is the script path (or '' in REPL)
-sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/options')
+sys.path.insert(1, '/Users/Jeff/Desktop/finance/codes/options')
+from bs_analytical_solver import bs_analytical_solver
 
 ## Want to execute in python shell? then use:
 #execfile('/home/jjwalker/Desktop/finance/codes/options/multi_chain_test.py')
@@ -46,16 +48,16 @@ ticker='^SPX'
 dte=150
 ## What is the path to the option chain?
 ## DO NOT NEED '/' AT THE END!
-path='/home/jjwalker/Desktop/finance/data/options'
+path='/Users/Jeff/Desktop/finance/data/options'
 #t_plus_30=pd.to_datetime('today').now()+timedelta(days=dte)
 #input_date=time.mktime(t_plus_30.timetuple())
 
 ## read from a specific file
-filename=path+'/2021/04/23/2021_04_23_13_55_^SPX_full_chain.txt'
+#filename=path+'/2021/04/23/2021_04_23_13_55_^SPX_full_chain.txt'
 #filename=path+'/2021/04/16/2021_04_16_17_11_^SPX_full_chain.txt'
 
-tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(filename,ticker,scrape=False)
-#tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker,scrape=True)
+#tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(filename,ticker,scrape=False)
+tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker,scrape=True)
 
 ## Do reindexing and cleaning in here:
 ## Do I need to add the 16 hour time delta?
@@ -80,7 +82,7 @@ timezone='CET'
 #exp_dates=np.array(df_calls.index.levels[0])
 dexp=np.array(df.index.levels[0])
 ## texp, in days, float array?
-tnow=tnow.tz_localize('US/Eastern')
+#tnow=tnow.tz_localize('US/Eastern')
 texp=np.array((df.index.levels[0].tz_localize('US/Eastern')-tnow)/np.timedelta64(1,'D'))
 
 ## time to expiration, from dnow and dexp, in days:
@@ -154,22 +156,31 @@ iv_clean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,iv_p))
 xclean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,x))
 yclean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,y))
 
-##
-#fig=plt.figure()
-#ax=plt.axes(projection='3d')
-#ax.plot_surface(xclean,yclean,iv_clean,cmap='viridis',edgecolor='none');plt.show()
-#plt.contour(x,y,iv);plt.show()
-
-## test attempt at a spline interpolation:
-#spl=splrep(all_strikes[~np.isnan(iv[0,:])],iv[0,:][~np.isnan(iv[0,:])],k=3,
-#	xb=iv[0,:][~np.isnan(iv[0,:])][0])
-#yspl=splev(all_strikes,spl)
-## two derivatives
-#ddy=splev(all_strikes,spl,der=2)
-#plt.plot(all_strikes,iv[0,:],'o',all_strikes,yspl);plt.show()
-
-## testing with cubic splines:
-#spl=splrep(xclean_c[1,:],ask_clean_c[1,:],k=3,xb=all_strikes[0],xe=all_strikes[-1])
+## multiplier to extend the new basis beyond all_strikes[-1]
+mb=5
+new_basis=np.linspace(0,mb*all_strikes[-1],num=100000)   
+iv_interp_c=np.zeros((len(df.index.levels[0]),len(new_basis)))
+iv_interp_p=np.zeros((len(df.index.levels[0]),len(new_basis)))
+for i in range(len(df.index.levels[0])):
+    ## Further cleaning; maybe some of this can be done outside the loop?
+    ## get rid of any masked elements:
+    u=xclean_c[i,:][~iv_clean_c[i,:].mask].data
+    v=iv_clean_c[i,:][~iv_clean_c[i,:].mask].data
+    ## Have to do this for the clamping, for now
+    ## Inserting 0 should always work, since 0 is almost never a strike
+    #u=np.insert(u,0,0)
+    #u=np.append(u,all_strikes[-1]+100)
+    #v=np.insert(v,0,v[0])
+    #v=np.append(v,v[-1])
+    cs=CubicSpline(u,v,bc_type='clamped')
+    iv_interp_c[i,:][(new_basis>=u[0])&(new_basis<=u[-1])]=cs(
+        new_basis[(new_basis>=u[0])&(new_basis<=u[-1])])
+    ## make sure the iv is constant outside the data region.
+    iv_interp_c[i,:][new_basis<u[0]]=v[0]
+    iv_interp_c[i,:][new_basis>u[-1]]=v[-1]
+    ## now for puts
+    
+x_interp,y_interp=np.meshgrid(new_basis,texp)
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Maybe a simpler plot to use in the meantime until I get surfaces working?
@@ -253,3 +264,12 @@ plt.savefig(write_path+'/'+ticker+'_at_time_'+tnow.strftime('%Y_%b_%d_%H_%M')+
 	'_iv.png')
 plt.show()
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## 3d surface plot
+fig=plt.figure()
+ax=plt.axes(projection='3d')
+ax.plot_surface(x_interp,y_interp,iv_interp_c,cmap='viridis',edgecolor='none')
+plt.show()
+#ax.set_xlim(left=0,right=5000)
+#ax.set_ylim(bottom=700)
+#plt.contour(x_interp,y_interp,iv_interp_c);plt.show()
