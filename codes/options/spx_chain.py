@@ -1,13 +1,34 @@
 """
-Created on Thursday, October 29, 2020
+Created on Sunday, July 11, 2021
 
 @author: Jeffrey J. Walker
 
-    multi_chain_test.py
-        This is a test script for the yahoo_option_chain_multi_exp.py function
-		Want to make sure it works properly, including the scraping of bond 
-		prices from wsj_bond_scraper.py for zero-coupon yields and adding this
-		to the saved dataframe(?)
+    spx_chain.py
+        This is a script based on the earlier multi_chain_test.py, but 
+        adapted specifically for spx options, to get implied interest rate,
+        implied dividends and then spx risk neutral probability distribution.
+        The method:
+        1.) Get all spx option chains
+        2.) Match the option chains that correspond to expiration dates of all
+            futures contracts within the next year
+        3.) With forward prices from these option chains, use put-call parity
+            to obtain risk free rates across all strikes!
+        4.) Get the overnight rate from nyfed:
+    
+            (If nearest term expiration is more than one night, assume that 
+             we roll at the overnight rate for the required number of nights
+             until expiration of nearest term spx options)
+        5.) Now, use cubic spline to interpolate (1-3 day rate) out to 
+            interest rate corresponding to furthest ES future contract 
+            available (~1 year). 
+            This interest rate can be used to price other options/get RNDs.
+            Interpolate forwards
+        6.) Get implied dividend rate for spx options
+        7.) Now, get RND for spx; Use interpolated forward price to get c(k=0)
+            and p(k->infty) values, needed for monotonic interp. method.
+        Consider including the scraping of bond prices from 
+        wsj_bond_scraper.py for zero-coupon yields and adding this to the 
+        saved dataframe(?)
 		A good test would be to plot 3d volatility surfaces and start to 
 		think about about Malz and Tiang methods for computing implied prob.
 
@@ -15,6 +36,10 @@ Created on Thursday, October 29, 2020
 
 import pandas as pd
 import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
+from matplotlib.colors import LogNorm
 ## I wanted to use scipy.interpolate.CubicSpline, but I cannot get it to import
 #from scipy.interpolate import splev, splrep
 from scipy.interpolate import CubicSpline
@@ -25,13 +50,13 @@ from datetime import datetime
 from datetime import date
 from datetime import timedelta
 from dateutil.tz import *
+import calendar
 import time
 import os
 import sys
 import json
-import matplotlib.pyplot as plt
-from mpl_toolkits import mplot3d
-from matplotlib.colors import LogNorm
+from urllib.request import Request, urlopen
+from bs4 import BeautifulSoup
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/Users/Jeff/Desktop/finance/codes/data_cleaning')
 from yahoo_option_chain_multi_exp import yahoo_option_chain_multi_exp
@@ -62,9 +87,89 @@ path='/Users/Jeff/Desktop/finance/data/options'
 #tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(filename,ticker,scrape=False)
 tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker,scrape=True)
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Not sure how to best structure this, since the time when prices are queried
+## is important (want to get futures prices as close in time as possible to
+## when we get option prices)
+## GET FUTURES PRICES FROM YAHOO FINANCE
+
+## futures quarterly expiration codes:
+futures_months=[3,6,9,12]
+futures_codes=['H','M','U','Z']
+
+closest_month=min(futures_months,key=lambda x:(tnow.month-x)>0)
+
+## es futures expiration month and year as integers
+exp_months=(futures_months[futures_months.index(closest_month):]+
+              futures_months[:futures_months.index(closest_month)])
+exp_years=([tnow.year]*len(
+    futures_months[futures_months.index(closest_month):])+
+    [tnow.year+1]*len(
+    futures_months[:futures_months.index(closest_month)]))
+
+## es futures expiration month and year as strings; needed for querying yahoo
+query_months=(futures_codes[futures_months.index(closest_month):]+
+              futures_codes[:futures_months.index(closest_month)])
+query_years=([str(tnow.year)[-2:]]*len(
+    futures_months[futures_months.index(closest_month):])+
+    [str(tnow.year+1)[-2:]]*len(
+    futures_months[:futures_months.index(closest_month)]))
+
+es_prices=np.zeros(len(futures_months))
+## Will need to insert the forward price corresponding to nearest term spx
+## option expiration
+es_expiry_dates=np.array([])
+
+## Need expiration dates!
+## third friday of the month at index open, which for es futures is 9:30am
+c = calendar.Calendar(firstweekday=calendar.SUNDAY)
+
+# loop to extract the next year's futures prices
+for i in range(len(futures_months)):
+    es_url=('https://query2.finance.yahoo.com/v10/finance/quoteSummary/ES'+
+            query_months[i]+query_years[i]+'.CME?modules=price')
+    #print(es_url)
+    json_data=pd.read_json(es_url)
+    es_prices[i]=json_data.quoteSummary.result[0]['price']['regularMarketPrice']['raw']
+    datetime.utcfromtimestamp(json_data.quoteSummary.result[0]['price']
+                     ['regularMarketTime'])
+    
+    monthcal = c.monthdatescalendar(exp_years[i],exp_months[i])
+    third_friday = [day for week in monthcal for day in week if \
+                    day.weekday() == calendar.FRIDAY and \
+                    day.month == exp_months[i]][2]
+    ## third_friday is a datetime.date object, which is why I have to do all 
+    ## the weird shuffling below with combining a datetime.date and 
+    ## datetime.time, then adding 9.5 (corresponding to 9:30 am market open)
+    es_expiry_dates=np.append(es_expiry_dates,
+        datetime.combine(third_friday,datetime.min.time())+
+        timedelta(hours=9.5))
+
+## convert es_expiry_dates to pandas datetime.
+## I think I can localize here?
+es_expiry_dates=pd.to_datetime(es_expiry_dates).tz_localize('US/Eastern')
+## And now get the time to expiry of the next 4 quarterly es futures contracts
+## in days
+es_texp=np.array((es_expiry_dates-tnow)/np.timedelta64(1,'D'))
+
+## get the (maximum?) overnight rate from marketwatch
+headers = {'User-Agent': 'Mozilla/5.0 (Linux; Android 5.1.1; SM-G928X Build/LMY47X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.83 Mobile Safari/537.36'}
+url='https://www.marketwatch.com/investing/InterestRate/USDR-TU1?countryCode=MR'
+req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+webpage = urlopen(req).read()
+soup=BeautifulSoup(webpage, 'html5lib')
+## the maximum overnight rate (guarunteed rate)
+dr=float(soup.find('td',{"class": "table__cell u-semi"}).get_text().replace(
+    '%',''))
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Continue with option chain cleaning after getting futures quotes.
+## In this version, Do I want to include only strikes where there are valid 
+## strikes for puts and calls?
 ## Do reindexing and cleaning in here:
 ## Do I need to add the 16 hour time delta?
-df.expiration=df.expiration.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)	
+df.expiration=(df.expiration.apply(lambda d: datetime.utcfromtimestamp(d))+
+               timedelta(hours=16))	
 ## Last trade dates may have NaN entries, so clean these outside of here?
 #df.lastTradeDate_c=df.lastTradeDate_c.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)
 #df.lastTradeDate_p=df.lastTradeDate_p.apply(lambda d: datetime.utcfromtimestamp(d))+timedelta(hours=16)
@@ -88,10 +193,6 @@ dexp=np.array(df.index.levels[0])
 #tnow=tnow.tz_localize('US/Eastern')
 texp=np.array((df.index.levels[0].tz_localize('US/Eastern')-tnow)/np.timedelta64(1,'D'))
 
-## time to expiration, from dnow and dexp, in days:
-#texp=(pd.Timestamp(dexp).tz_localize('US/Eastern')-pd.Timestamp(dnow)
-#		)/np.timedelta64(1,'D')	
-
 ## A list/array with all the expiration dates/time to expiration:
 ## All possible strikes:
 #all_strikes=np.unique(df.index.get_level_values(1))
@@ -103,7 +204,40 @@ all_strikes=df.index.levels[1].unique()
 ## get all values of variable for all strikes:
 #df_calls[df_calls.index.get_level_values(1)==all_strikes].ask
 
+## Nearest "term" forward is the forward price constructed from the nearest 
+## term spx option chain; 
+## assume the dividend is zero?? How to address this as dividends are paid??
+## We can assume that we can roll at the overnight rate
+## F_nearest should be very close to the spot_price.
+F_nearest=spot_price*np.exp((dr/100)*texp[0]/365.24)
 
+## find option expirations that match the futures expirations;
+## just take the date component of the timestamp
+## OR: (LAZY)
+## Find nearest value of texp to each entry in es_texp; this will be an spx 
+## option chain corresponding to quarterly expiration.
+## replace texp with es_texp?
+trep_index=np.array([])
+for i in range(len(es_texp)):
+    es_expiry_dates[i].date()
+    ## cap the expiration date on texp:
+    trep_index=np.append(trep_index,np.where(
+        abs(es_texp[i]-texp)==min(abs(es_texp[i]-texp)))[0][0])
+trep_index=trep_index.astype(int)
+## replace some of the option chain dates with the more correct dates, from
+## futures quotes
+texp[trep_index]=es_texp
+
+## interpolate futures dates up until approx. 1 year
+forward_cs=CubicSpline(np.insert(es_texp,0,texp[0]),
+                       np.insert(es_prices,0,F_nearest),bc_type='clamped')
+tcap=texp[texp<=es_texp[-1]]
+## An easy to use index that only contains option strikes for the available
+## futures prices (~1 year)
+tcap_index=np.arange(len(tcap))
+F_interp=forward_cs(texp[texp<=es_texp[-1]])
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Dataframe entries should be "cleaned" with the following conditions:
 ## (As previously used (successfully?) in my simpler script 'iv_snapshot.py')
 ## IV constrainted to be >=0 and no Nans
@@ -115,6 +249,10 @@ all_strikes=df.index.levels[1].unique()
 #	names=['expiration','strike']),fill_value=np.NaN)
 
 ## some test arrays:
+open_interest_c=df.openInterest_c.values.reshape(len(df.index.levels[0]),
+	len(df.index.levels[1]))
+open_interest_p=df.openInterest_p.values.reshape(len(df.index.levels[0]),
+	len(df.index.levels[1]))
 volume_c=df.volume_c.values.reshape(len(df.index.levels[0]),
 	len(df.index.levels[1]))
 volume_p=df.volume_p.values.reshape(len(df.index.levels[0]),
@@ -143,21 +281,88 @@ x,y=np.meshgrid(df.index.levels[1],texp)
 unfair_call=((ask_c<(spot_price-x))&(x<spot_price))
 unfair_put=((ask_p<(x-spot_price))&(x>spot_price))
 ## I was also considering enforcing some kind of monotonicy for ask/bid data
-clean_conditions_c=((np.isnan(volume_c))|(iv_c<=0)|(ask_c<=0)|(bid_c<=0)|unfair_call)
-clean_conditions_p=((np.isnan(volume_p))|(iv_p<=0)|(ask_p<=0)|(bid_p<=0)|unfair_call)
+clean_conditions_c=((np.isnan(volume_c))|(iv_c<=0)|(ask_c<=0)|(bid_c<=0)|
+                    (np.isnan(open_interest_c))|(unfair_call))
+clean_conditions_p=((np.isnan(volume_p))|(iv_p<=0)|(ask_p<=0)|(bid_p<=0)|
+                    (np.isnan(open_interest_p))|(unfair_call))
+
+## special clean condition to keep only the strikes where there is valid data
+## for puts and calls
+clean_all=clean_conditions_c|clean_conditions_p
 
 ## clean all the relevant arrays according to our conditions
 ask_clean_c=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_c,ask_c))
 bid_clean_c=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_c,bid_c))
 iv_clean_c=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_c,iv_c))
+oi_clean_c=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_c,
+                                                   open_interest_c))
 xclean_c=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_c,x))
 yclean_c=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_c,y))
 ##
 ask_clean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,ask_p))
 bid_clean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,bid_p))
 iv_clean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,iv_p))
+oi_clean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,
+                                                   open_interest_p))
 xclean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,x))
 yclean_p=np.ma.masked_invalid(np.ma.masked_where(clean_conditions_p,y))
+## Arrays cleaned for puts and calls, together, which only keeps the strikes
+## for which there is valid data
+## call data
+ask_all_c=np.ma.masked_invalid(np.ma.masked_where(clean_all,ask_c))
+bid_all_c=np.ma.masked_invalid(np.ma.masked_where(clean_all,bid_c))
+iv_all_c=np.ma.masked_invalid(np.ma.masked_where(clean_all,iv_c))
+oi_all_c=np.ma.masked_invalid(np.ma.masked_where(clean_all,
+                                                   open_interest_c))
+## put data
+ask_all_p=np.ma.masked_invalid(np.ma.masked_where(clean_all,ask_p))
+bid_all_p=np.ma.masked_invalid(np.ma.masked_where(clean_all,bid_p))
+iv_all_p=np.ma.masked_invalid(np.ma.masked_where(clean_all,iv_p))
+oi_all_p=np.ma.masked_invalid(np.ma.masked_where(clean_all,
+                                                   open_interest_p))
+x_all=np.ma.masked_invalid(np.ma.masked_where(clean_all,x))
+y_all=np.ma.masked_invalid(np.ma.masked_where(clean_all,y))
+
+## Put call parity to obtain implied interest rates/forwards from these chains
+## Basic Formula: r_imp=(np.log((F_interp-k)/(c-p+k-k)))/T
+## Loop over the dates for which we have futures prices or interpolated 
+## futures prices and compute the implied interest rates.
+r_imp=np.zeros(len(trep_index))
+div_imp=np.zeros(len(r_imp))
+for i in range(len(trep_index)):
+    ## compute average value of c-p+k, based on bid-ask spread midpoint
+    call_put=((ask_all_c[i,:][~ask_all_c[i,:].mask].data+
+            bid_all_c[i,:][~bid_all_c[i,:].mask].data)/2-
+           (ask_all_p[i,:][~ask_all_p[i,:].mask].data+
+            bid_all_p[i,:][~bid_all_p[i,:].mask].data)/2)
+    ## Alternative: buy c-p or sell c-p
+    call_put_buy=(ask_all_c[i,:][~ask_all_c[i,:].mask].data+
+                  bid_all_p[i,:][~bid_all_p[i,:].mask].data)
+    call_put_sell=(bid_all_c[i,:][~bid_all_c[i,:].mask].data+
+                  ask_all_p[i,:][~ask_all_p[i,:].mask].data)
+    ## Get the linear regression of this line; 
+    ## then use exp(r_imp*T)(beta*k+alpha)+k to get r_imp,
+    ## satisfied by r_imp=-np.log(-beta)/T
+    ## as per this page: 
+    ## https://quant.stackexchange.com/questions/48781/implied-interest-rate-using-put-call-parity
+    slope, intercept, r_value, p_value, std_err = stats.linregress(
+        x_all[i,:][~x_all[i,:].mask].data,call_put)
+    ## pick a value for the strike price that is guaranteed to have (F-k)>0
+    k=all_strikes[0]
+    ## Pick lowest available strike
+    #k=x_all[i,:][~x_all[i,:].mask].data[0]
+    ## put it all together.
+    ## Divide tcap by 365 because it is given in days.
+    #r_imp[i]=np.log((F_interp[i]-k)/(denom-k))/(tcap[i]/365.25)
+    #r_imp[i]=-np.log(-slope)/(tcap[i]/365.25)
+    r_imp[i]=np.log((es_prices[i]-k)/(intercept+slope*k))/(es_texp[i]/365.25)
+    div_imp[i]=-np.log((intercept+slope*k+
+                        k*np.exp(-r_imp[i]*es_texp[i]/365.25))
+                       /spot_price)/(es_texp[i]/365.25)
+    
+#np.log((F_interp[1]-x_all[1,:][~x_all[1,:].mask].data)/((ask_all_c[1,:][~ask_all_c[1,:].mask].data+bid_all_c[1,:][~bid_all_c[1,:].mask].data)/2-(ask_all_p[1,:][~ask_all_p[1,:].mask].data+bid_all_p[1,:][~bid_all_p[1,:].mask].data)/2))/texp[1]
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ## multiplier to extend the new basis beyond all_strikes[-1]
 mb=5
@@ -182,6 +387,7 @@ for i in range(len(df.index.levels[0])):
     iv_interp_c[i,:][new_basis<u[0]]=v[0]
     iv_interp_c[i,:][new_basis>u[-1]]=v[-1]
     ## now for puts
+    
     
 x_interp,y_interp=np.meshgrid(new_basis,texp)
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

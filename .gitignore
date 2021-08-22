@@ -6,4 +6,5 @@
 *.txt
 *.png
 *.jpeg
-
+*.ods
+data/*

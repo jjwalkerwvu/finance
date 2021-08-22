@@ -94,6 +94,27 @@ zc.set_index('Date',inplace=True)
 ## compounded
 ## the market price of the 30 year zc bond:
 par_val=1000
+## Average bid ask spread of STRIPS; 3 ticks (32nds?) 
+## (according to Daves and Ehrhardt, 1993) <- check this reference!
+## Using 4 ticks to be generous, as in "TIPS-Treasury Bond Puzzle",
+## Matthias Fleckenstein, Francis A. Longstaff and Hanno Lustig
+## (presented by Rafael A. Porsani)
+## I think ticks here assume a bond priced relative to 100, not 1000, but 
+## check! It seems low to me; maybe I can turn it into a percentage of the 
+## bond? I will check quotes at Etrade later to get an idea
+## Quotes from Etrade:
+## CUSIP: 912834WZ7
+## 15 May 2051: bid: 55.694 (%1.978), offer: 56.387 (%1.936), min order:10
+## Spread is %1.24 of bid-ask midpoint
+## CUSIP: 912803FT5 (Definitely off the run)
+## 15 Nov 2050: bid: 56.66 (%1.953), offer: 57.32 (%1.913), min order:25
+## Spread is %1.16 of bid-ask midpoint
+## Let's go with %1.25 for the spread, instead of 4/32nds for now until I 
+## learn more.
+#spread=4/32.0*10
+spread=0.0125
+## I should also consider commissions; interesting article:
+## https://www.chicagotribune.com/news/ct-xpm-1985-02-18-8501100081-story.html
 ## calculate market prices right now, before we even start:
 pzc=par_val/((1+zc[zc.columns[67:97]]/200)**2)**(range(1,31))
 ## 30 year STRIPS start date
@@ -108,7 +129,10 @@ pzc_sell=pzc[pzc.columns[strips_duration-2]]
 ## risk free total return if we just buy and hold for the duration of the bond:
 rf_return=par_val/pzc[pzc.columns[strips_duration-1]]
 ## risk free return for the rolling period?
-rf_rolling=par_val/pzc[pzc.columns[rolling_period-1]]
+#rf_rolling=par_val/pzc[pzc.columns[rolling_period-1]]
+rf_rolling=par_val/pzc[pzc.columns[
+    int((rolling_period>30)*30+(rolling_period<30)*rolling_period)-1]]
+
 
 ## For a given start date, need to buy 30 zc, sell one year later, repeat
 ## until desired time frame (in years)
@@ -169,6 +193,9 @@ roll_return=np.zeros((len(roll_array)))
 ## this is a terrible solution, but works for now
 ## change this so that we hold the bond for one year exactly, buy next bond
 ## 5 days after the transaction settles; capital gains would be long term
+## 19 August 2021: Trying to incorporate spread into the calculations;
+## Assuming that Refet S. Gurkaynak, Brian Sack, and Jonathan H. Wright
+## use midpoint of bid ask spread in Fed publication 2006-28; check again!
 for i in range(len(roll_array)):
 	## best way to make a "yearly" array?
 	buy_date=pd.DatetimeIndex([
@@ -194,13 +221,58 @@ for i in range(len(roll_array)):
 			)
 	peff=par_val/(1+yeff/200.0)**(2*rem_dur)
 	
-	roll_return[i]=np.prod((peff.values)/(pzc_buy.loc[buy_date].values))
+    ## incorporate bid ask spread of 4/32 into each transaction;
+    ## so pay 2/32 more and sell for 2/32 less
+    ## OR: just subtract the entire spread from when bond is sold?
+	roll_return[i]=np.prod((peff.values-peff.values*spread/2)/
+                        (pzc_buy.loc[buy_date].values+
+                         pzc_buy.loc[buy_date].values*spread/2))
 	
 	#roll_return[i]=np.prod((pzc_sell.loc[sell_date].values)/
 	#	(pzc_buy.loc[buy_date].values))
 
 ## Make a data frame of the rolling returns for simplicity:
 zc_return=pd.DataFrame(roll_return,index=roll_array,columns=['zc_return'])
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Now, calculate rolling returns over the entire period for both zero coupon
+## bonds and sp500
+
+## the number of years between the start date and the end date
+## We use this number as a loop counter
+total_years=int((end_date-start_date).days//365.25)
+## temp fix; shiller data does not update often, so use last valid date of
+## Shiller Data as the end_date?
+
+
+sell_arr=[get_business_day(end_date-relativedelta(years=j)) 
+         for j in range(total_years)][::-1]
+buy_arr=[get_business_day(end_date-relativedelta(years=j)) 
+         for j in range(1,total_years+1)][::-1]
+
+## array for zero coupon returns (of the strip_duration) as measured from the 
+## most recent date where we have data
+zc_point=(pzc_sell.loc[sell_arr[::-1]]/pzc_buy.loc[buy_arr[::-1]].values)
+## And now, the yearly returns, working backward from the current date
+zc_pr=[np.prod(zc_point[:i]) for i in range(1,len(zc_point)+1)]
+## array that counts the years
+pr_years=np.arange(1,total_years+1)
+## the cagr for each cumulative year period (1 year, 2 year, etc.)
+zc_pr_cagr=(zc_pr**(1.0/pr_years)-1)*100
+
+
+## What does this correspond to again?
+# sp500_point=(sp500tr.value_tr.loc[sell_arr[::-1]]/
+#        sp500tr.value_tr.loc[buy_arr[::-1]].values)
+# sp500_pr=[np.prod(sp500_point[:i]) for i in range(1,len(sp500_point)+1)]
+# sp500_pr_cagr=(sp500_pr**(1.0/pr_years)-1)*100
+
+
+## The idea for the plot:
+#plt.plot(pr_years,zc_pr_cagr,'bd')
+#plt.plot(pr_years,sp500_pr_cagr,'sg')
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## format the total return of sp500tr:
 #tot_return=(spx.Close[start_date:final_date].values/spx.Close[start_date:final_date].values)**(1/rolling_period)-1
 ## put roll_return and roll_array together into a timeseries
@@ -226,10 +298,13 @@ plt.ylabel('CAGR %')
 plt.xlabel('Date')
 plt.legend(loc='best')
 plt.tight_layout()
-#plt.savefig(str(strips_duration)+'y_zc_and_sp500_'+str(rolling_period)+'y_rolling_return.png')
+plt.savefig(str(strips_duration)+'y_zc_and_sp500_'+str(rolling_period)+
+            'y_rolling_return.png')
 plt.show()
 
-## Also plot the "telltale chart", or the ratio of total zc return to spx
+## Also plot the "telltale chart", or the ratio of total zc return to spx.
+## Might be a good idea to also find the percentage of times that zc beats
+## spx for this collection of data
 plt.figure()
 plt.title(str(strips_duration)+'y STRIPS'+' Total Return Telltale Chart, '+
           str(rolling_period)+'y Rolling Period')
@@ -238,6 +313,10 @@ plt.plot(zc_return.zc_return/shiller_tot_return,'ob',
 plt.plot(pd.Series(data=np.ones(len(shiller_tot_return)),
                    index=shiller_tot_return.index),'.k')
 plt.xlim(left=zc_return.index[0],right=zc_return.index[-1])
+plt.ylabel('STRIPS/SP500 Total Return')
+plt.xlabel('Date')
+plt.savefig(str(strips_duration)+'y_zc_and_sp500_'+str(rolling_period)+
+            'y_rolling_return_telltale_chart.png')
 plt.show()
 
 ## plot the sp500 cagr minus risk free rate?
@@ -250,6 +329,10 @@ plt.plot(pd.Series(
     data=np.zeros(len(rf_rolling_cagr)),
     index=rf_rolling_cagr.index),'-k')
 plt.xlim(left=zc_return.index[0],right=zc_return.index[-1])
+plt.ylabel('SP500 CAGR - '+str(rolling_period)+'y STRIPS CAGR')
+plt.xlabel('Date')
+plt.savefig('SP500'+str(rolling_period)+
+            'y_erp_based_on_STRIPS.png')
 plt.show()
 
 

@@ -17,12 +17,24 @@ zc.set_index('Date',inplace=True)
 yield_curve=zc.iloc[-1]
 last_date=zc.index[-1]
 
-## required payment and frequency (/year)
-p=1600
+
+## for monthly frequency, use 1/12.0
 freq=1/12.0
 ## number of years where payments are needed
-nyears=15
-npayments=nyears/(1/freq)
+nyears=30
+npayments=nyears*(1/freq)
+
+## as an example, consider a mortgage:
+principal=400e3
+## the mortgage payment, from the annuity equation
+## interest rate of mortgage
+r_mort=0.025
+mort=principal*(r_mort*freq*(1+r_mort*freq)**(npayments)/
+                ((1+r_mort*freq)**npayments-1))
+
+## required payment and frequency (/year)
+p=1.0*mort/freq
+
 
 ## array of time until each payment
 tarr=(1+np.arange(npayments))*freq
@@ -39,5 +51,8 @@ yrem=(zc.BETA0.loc[last_date]+
 		
 dfact=1/(1+yrem/200.0)**(2*tarr)
 
-tot_cost=np.sum(p*dfact)
+tot_cost=np.sum(p*freq*dfact)
+print('Initial capital needed in zero coupon bonds to support fixed cost of $'+
+      str(p)+'/year: $'+str(tot_cost))
+print('Total cash flow of the fixed cost: $'+str(p*freq*npayments))
     
