@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Dec  4 22:49:38 2021
+
+    This module performs commonly used functions done on CMT yield data
+    downloaded from fred.
+
+@author: jeff
+"""
+import pandas as pd
+import numpy as np
+from fred_csv_reader import fred_csv_reader
+
+
+class FredYields:
+    
+    #__data=object()
+    
+    def __init__(self,data):
+        
+        self.data=data
+    
+    
+    # This is working, for now
+    # Initialize like: a=FedsYieldCurve.get_data()
+    @classmethod
+    def get_data(cls):
+        
+        
+        return cls(something)
