@@ -20,7 +20,6 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 ## import the csv reader for FRED data, yahoo, etc.
 sys.path.insert(1, '/Users/jeff/Desktop/finance/codes/data_cleaning')
 from fred_csv_reader import fred_csv_reader
-from yahoo_csv_reader import yahoo_csv_reader
 ## yahoo_csv_reader replacement
 from yahoo_stock_query import yahoo_stock_query
 from shiller_excel_reader import shiller_excel_reader 
@@ -94,6 +93,8 @@ zc.set_index('Date',inplace=True)
 ## compounded
 ## the market price of the 30 year zc bond:
 par_val=1000
+
+## bid ask spread, in percentage/100
 ## Average bid ask spread of STRIPS; 3 ticks (32nds?) 
 ## (according to Daves and Ehrhardt, 1993) <- check this reference!
 ## Using 4 ticks to be generous, as in "TIPS-Treasury Bond Puzzle",
@@ -102,7 +103,13 @@ par_val=1000
 ## I think ticks here assume a bond priced relative to 100, not 1000, but 
 ## check! It seems low to me; maybe I can turn it into a percentage of the 
 ## bond? I will check quotes at Etrade later to get an idea
+## Brian Sack uses data from 1994-1999, and suggests that 4/32 ($0.125) may be
+## narrow oOnly 5% of observations present reconstitution arbitrage 
+## opportunity.)
 ## Quotes from Etrade:
+## (I calculate the spread percentage as the difference between the bid and ask
+## divided by the average (midpoint). Hence, the calculation goes:
+## 2*(ask-bid)/(ask+bid)
 ## CUSIP: 912834WZ7
 ## 15 May 2051: bid: 55.694 (%1.978), offer: 56.387 (%1.936), min order:10
 ## Spread is %1.24 of bid-ask midpoint
@@ -111,25 +118,46 @@ par_val=1000
 ## Spread is %1.16 of bid-ask midpoint
 ## Let's go with %1.25 for the spread, instead of 4/32nds for now until I 
 ## learn more.
+## August 19 2021 spreads: 
+## 1.2% for May 15 2021 maturity
+## 1.16% for November 15 2050 maturity
+## September 21 2021 spreads: 
+## ~0.5% for May 15 2051 mat.
+## October 13 2021 spreads:
+## ~0.6% for February 15 2051 mat.
 #spread=4/32.0*10
-spread=0.0125
+#spread=0.0125
+spread=0.005
 ## I should also consider commissions; interesting article:
 ## https://www.chicagotribune.com/news/ct-xpm-1985-02-18-8501100081-story.html
+## Interactive Brokers current charges: (bills/notes/bonds, does this include
+## strips? $5.0 minimum order)
+## 0.2 bps for first $1e6 face value and
+## 0.01 bps for additional bonds purchased. 
+#commission=0.002
+
 ## calculate market prices right now, before we even start:
-pzc=par_val/((1+zc[zc.columns[67:97]]/200)**2)**(range(1,31))
+#pzc=par_val/((1+zc[zc.columns[67:97]]/200)**2)**(range(1,31))
+## The zero coupon data from the fed is quoted as continuous compounded, so
+## we need to convert to semi-annual coupon compound convention for STRIPS
+## prices.
+pzc=par_val/((1+(np.exp(zc[zc.columns[67:97]]/200)-1))**2)**(range(1,31))
 ## 30 year STRIPS start date
 #strips30_start=pd.Timestamp('1985-12-02')
 start_date=pd.to_datetime('1985-12-02')
 strips_duration=26
-## desired rolling period, in years:
+## desired rolling period, in years. If this is more than 30 years, need to
+## change things in the code?
 rolling_period=30
 pzc_buy=pzc[pzc.columns[strips_duration-1]]
 ## change to using the beta, tau, etc. parameters later, but use this for now
 pzc_sell=pzc[pzc.columns[strips_duration-2]]
-## risk free total return if we just buy and hold for the duration of the bond:
-rf_return=par_val/pzc[pzc.columns[strips_duration-1]]
-## risk free return for the rolling period?
-#rf_rolling=par_val/pzc[pzc.columns[rolling_period-1]]
+## risk free total return if we just buy and hold for the duration of the bond,
+## adjusted by the spread (only when opening the position)
+rf_return=par_val/(pzc[pzc.columns[strips_duration-1]]+
+                   spread*pzc[pzc.columns[strips_duration-1]])
+## risk free return for the rolling period? Cap it at 30 years, even if 
+## rolling period is longer
 rf_rolling=par_val/pzc[pzc.columns[
     int((rolling_period>30)*30+(rolling_period<30)*rolling_period)-1]]
 
@@ -219,11 +247,16 @@ for i in range(len(roll_array)):
 			zc.BETA3.loc[sell_date]*((1-np.exp(-rem_dur/zc.TAU2.loc[sell_date])
 			)/(rem_dur/zc.TAU2.loc[sell_date])-np.exp(-rem_dur/zc.TAU2.loc[sell_date]))
 			)
-	peff=par_val/(1+yeff/200.0)**(2*rem_dur)
-	
+    ## yeff must be converted from continuous compounding convention to 
+    ## semi-annual coupon equivalent compounding convention!	
+	peff=par_val/(np.exp(yeff/200.0))**(2*rem_dur)
+    #peff=par_val/(1+yeff/200.0)**(2*rem_dur)
+    
     ## incorporate bid ask spread of 4/32 into each transaction;
     ## so pay 2/32 more and sell for 2/32 less
-    ## OR: just subtract the entire spread from when bond is sold?
+    ## The Gurkaynak yield dataset uses midpoint of bid ask spread, so add 
+    ## HALF the spread when buying and deduct this value when selling.
+    
 	roll_return[i]=np.prod((peff.values-peff.values*spread/2)/
                         (pzc_buy.loc[buy_date].values+
                          pzc_buy.loc[buy_date].values*spread/2))

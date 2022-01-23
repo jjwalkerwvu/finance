@@ -18,18 +18,22 @@ from statsmodels.tsa.stattools import adfuller
 #from statsmodels.tsa.stattools import kpss
 ## import the csv reader for Yahoo finance data
 # insert at 1, 0 is the script path (or '' in REPL)
-sys.path.insert(1, '/home/jjwalker/Desktop/finance/codes/data_cleaning')
-from yahoo_csv_reader import yahoo_csv_reader
 ## import the csv reader for FRED data
+sys.path.insert(1, '/Users/jeff/Desktop/finance/codes/data_cleaning')
+from yahoo_csv_reader import yahoo_csv_reader
 from fred_csv_reader import fred_csv_reader
+from yahoo_stock_query import yahoo_stock_query
+
 
 ## path where the various data files are located.
-spx_path='/home/jjwalker/Desktop/finance/data/stocks/'
-fed_path='/home/jjwalker/Desktop/finance/data/us_economic_data/'
+spx_path='/Users/jeff/Desktop/finance/data/stocks/'
+fed_path='/Users/jeff/Desktop/finance/data/us_economic_data/'
+
 
 
 fed_bs=fred_csv_reader(fed_path+'WALCL')
-spx=yahoo_csv_reader(spx_path+'^GSPC','^GSPC')
+#spx=yahoo_csv_reader(spx_path+'^GSPC','^GSPC')
+spx=yahoo_stock_query('^GSPC')
 
 ## Want to execute in python shell? then use:
 #execfile('/home/jjwalker/Desktop/finance/codes/stocks/granger_causality.py')
@@ -84,7 +88,7 @@ gc_res=grangercausalitytests(x,nmlags)
 ## dictionary keys of the results are just the number of lags, so 1,2,3, etc.
 
 ## find lag with highest F-test, then print the following? (restricted model?)
-print gc_res[4][1][0].summary()
+print(gc_res[4][1][0].summary())
 
 ## Might also want to go the other way, to make sure that spx does not granger
 ## cause the fed balance sheet

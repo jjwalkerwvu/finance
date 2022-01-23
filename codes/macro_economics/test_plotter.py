@@ -47,9 +47,9 @@ plt.plot(corp_debt[corp_debt.columns[0]]/gdp[gdp.columns[0]],'.k',label='US Corp
 ## confine ourselves to the 0-100% range?
 #plt.ylim([0,1])
 plt.legend(loc='best')
-plt.ylabel('%'
+plt.ylabel('%')
 plt.xlabel('Date')
 plt.tight_layout()
-plt.savefig('test.png')
+#plt.savefig('test.png')
 
 

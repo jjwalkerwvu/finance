@@ -42,6 +42,7 @@ from mpl_toolkits import mplot3d
 from matplotlib.colors import LogNorm
 ## I wanted to use scipy.interpolate.CubicSpline, but I cannot get it to import
 #from scipy.interpolate import splev, splrep
+from scipy.interpolate import interp1d
 from scipy.interpolate import CubicSpline
 ## for monotonic interpolation:
 from scipy.interpolate import PchipInterpolator
@@ -60,12 +61,13 @@ from bs4 import BeautifulSoup
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/Users/Jeff/Desktop/finance/codes/data_cleaning')
 from yahoo_option_chain_multi_exp import yahoo_option_chain_multi_exp
+from YieldCurve import FedFundsFutures
 ## insert the path corresponding to bs_analytical solver; we may need this 
 ## function!
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/Users/Jeff/Desktop/finance/codes/options')
 from bs_analytical_solver import bs_analytical_solver
-
+from implied_volatility import implied_volatility
 ## Want to execute in python shell? then use:
 #execfile('/home/jjwalker/Desktop/finance/codes/options/multi_chain_test.py')
 
@@ -85,7 +87,8 @@ path='/Users/Jeff/Desktop/finance/data/options'
 #filename=path+'/2021/04/16/2021_04_16_17_11_^SPX_full_chain.txt'
 
 #tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(filename,ticker,scrape=False)
-tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker,scrape=True)
+tnow,expiry_dates,spot_price,df=yahoo_option_chain_multi_exp(path,ticker,
+                                                             scrape=True)
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Not sure how to best structure this, since the time when prices are queried
@@ -162,6 +165,15 @@ soup=BeautifulSoup(webpage, 'html5lib')
 dr=float(soup.find('td',{"class": "table__cell u-semi"}).get_text().replace(
     '%',''))
 
+## What about the secured overnight funding rate?
+## When should sofr be used? - SOFR arrangements must be collateralized
+#sofr_url='https://www.marketwatch.com/investing/interestrate/ussofr-fds?countrycode=mr'
+#req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+#webpage = urlopen(req).read()
+#soup=BeautifulSoup(webpage, 'html5lib')
+#sofr=float(soup.find('td',{"class": "table__cell u-semi"}).get_text().replace(
+#    '%',''))
+
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Continue with option chain cleaning after getting futures quotes.
 ## In this version, Do I want to include only strikes where there are valid 
@@ -236,6 +248,21 @@ tcap=texp[texp<=es_texp[-1]]
 ## futures prices (~1 year)
 tcap_index=np.arange(len(tcap))
 F_interp=forward_cs(texp[texp<=es_texp[-1]])
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Get discount rates using one of my YieldCurve class
+ff_data=FedFundsFutures.get_fedfunds_futures(write_path=path,
+                                             write_to_file=True)
+## Use simple, linear interpolation to fill in interest rates for all option
+## expirys.
+## I used extrapolation for the fill value in order to suppress errors for now,
+## but this can get you into trouble later!
+ff_yield_interp=interp1d(ff_data.market_df.t_settlement.values*365.24,
+                         ff_data.market_df.implied_yield.values,
+                         fill_value="extrapolate")
+
+## resulting interest rate will already be continuously compounding and in 
+## (decimal) form, ready to use as a discount rate.
+rintp=ff_yield_interp(texp)
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Dataframe entries should be "cleaned" with the following conditions:
@@ -363,12 +390,36 @@ for i in range(len(trep_index)):
 #np.log((F_interp[1]-x_all[1,:][~x_all[1,:].mask].data)/((ask_all_c[1,:][~ask_all_c[1,:].mask].data+bid_all_c[1,:][~bid_all_c[1,:].mask].data)/2-(ask_all_p[1,:][~ask_all_p[1,:].mask].data+bid_all_p[1,:][~bid_all_p[1,:].mask].data)/2))/texp[1]
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## 2022 Jan 7: Now that I have a reliable method to obtain risk-free rates, I
+## can now solve for forward price and implied dividends!
 
+fprice=np.zeros(len(texp))
+div_imp=np.zeros(len(texp))
+for i in range(len(df.index.levels[0])):
+    ## Do our best to compute the forward.
+    near_atm=(x_all[i,:].data<=1.1*spot_price)&(
+        x_all[i,:].data>=0.9*spot_price)
+    fprice_vector=x_all[i,:].data[near_atm]+np.exp(rintp[i]*texp[i]/365.24)*(
+        (ask_all_c[i,:].data[near_atm]+bid_all_c[i,:].data[near_atm]-
+         bid_all_p[i,:].data[near_atm]-ask_all_p[i,:].data[near_atm])/2)
+    
+    fprice[i]=fprice_vector[~np.isnan(fprice_vector)].mean()
+    div_imp[i]=-365.24/texp[i]*np.log(fprice[i]*np.exp(-rintp[i]*texp[i]/365.24)/spot_price)
+    
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Compute IV manually; vectorize in the future.
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## multiplier to extend the new basis beyond all_strikes[-1]
 mb=5
-new_basis=np.linspace(0,mb*all_strikes[-1],num=100000)   
+spacing=int(mb*all_strikes[-1])+1
+new_basis=np.linspace(0,mb*all_strikes[-1],num=spacing)   
 iv_interp_c=np.zeros((len(df.index.levels[0]),len(new_basis)))
 iv_interp_p=np.zeros((len(df.index.levels[0]),len(new_basis)))
+#
+call_interp=np.zeros((len(df.index.levels[0]),len(new_basis)))
+cumul_dist_c=np.zeros((len(df.index.levels[0]),len(new_basis)))
 for i in range(len(df.index.levels[0])):
     ## Further cleaning; maybe some of this can be done outside the loop?
     ## get rid of any masked elements:
@@ -386,6 +437,19 @@ for i in range(len(df.index.levels[0])):
     ## make sure the iv is constant outside the data region.
     iv_interp_c[i,:][new_basis<u[0]]=v[0]
     iv_interp_c[i,:][new_basis>u[-1]]=v[-1]
+    for j in range(len(new_basis)):
+        call_interp[i,j],second_der,delta,gamma,vega,theta,rho=(
+            bs_analytical_solver(
+                spot_price, 
+                new_basis[j], 
+                rintp[i], 
+                texp[i]/365.24, 
+                iv_interp_c[i,j], 
+                o_type='c'))
+    temp=1+np.exp(rintp[i]*texp[i]/365.24)*np.diff(call_interp[i,:])
+    temp=np.append(temp,1)
+    cumul_dist_c[i,:]=temp
+    print('Finished iteration: '+str(i))
     ## now for puts
     
     
@@ -393,7 +457,34 @@ x_interp,y_interp=np.meshgrid(new_basis,texp)
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Now that iv interpolation is complete, we use second derivative of BS
 ## model
-
+ask_iv_calc_c=np.zeros((len(df.index.levels[0]),len(df.index.levels[1])))
+bid_iv_calc_c=np.zeros((len(df.index.levels[0]),len(df.index.levels[1])))
+for i in range(len(df.index.levels[0])):
+    for j in range(len(df.index.levels[1])):
+        if (np.ma.is_masked(ask_clean_c[i,j]) and 
+            np.ma.is_masked(xclean_c[i,j]))==False:
+            try:
+                ask_iv_calc_c[i,j]=implied_volatility(
+                    ask_clean_c[i,j],
+                    spot_price,
+                    xclean_c[i,j],
+                    rintp[i],
+                    texp[i]/365.24,
+                    iv_clean_c[i,j],
+                    o_type='c')
+                
+                bid_iv_calc_c[i,j]=implied_volatility(
+                    bid_clean_c[i,j],
+                    spot_price,
+                    xclean_c[i,j],
+                    rintp[i],
+                    texp[i]/365.24,
+                    iv_clean_c[i,j],
+                    o_type='c')
+            except:
+                ask_iv_calc_c[i,j]=np.nan
+        else:
+            ask_iv_calc_c[i,j]=np.nan
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Monotonic interpolation of calls and puts to get cumulative risk neutral
 ## distribution function.
@@ -482,6 +573,14 @@ plt.savefig(write_path+'/'+ticker+'_at_time_'+tnow.strftime('%Y_%b_%d_%H_%M')+
 	'_premia.png')
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Implied Volatility Plots!!!
+## Find the strike where the minimum iv occurs; I thought this would correspond
+## to the forward price, but now I'm not so sure
+iv_min_c=np.zeros(len(texp))
+arr_elements=np.zeros(len(texp))
+for i in range(len(texp)):
+    iv_min_c[i]=np.min(iv_clean_c[i,:])
+    arr_elements[i]=xclean_c[i,:][iv_clean_c[i,:]==iv_min_c[i]].data[0]
+    
 iv_max=(np.max(iv_clean_c)*(np.max(iv_clean_c)>np.max(iv_clean_p))+
 	np.max(iv_clean_p)*(np.max(iv_clean_c)<=np.max(iv_clean_p)))
 plt.figure()
@@ -531,3 +630,18 @@ plt.show()
 #ax.set_xlim(left=0,right=5000)
 #ax.set_ylim(bottom=700)
 #plt.contour(x_interp,y_interp,iv_interp_c);plt.show()
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Open interest by strike price?
+plt.figure();
+# Maybe bar chart is good?
+i=1
+plt.title('Days to Expiry: %.2f' %texp[i])
+plt.bar(x_all[i,:][~oi_all_c[i,:].mask].data,
+        oi_all_c[i,:][~oi_all_c[i,:].mask].data)
+# Let's have a negative sign in front of put open interest
+plt.bar(x_all[i,:][~oi_all_p[i,:].mask].data,
+        -oi_all_p[i,:][~oi_all_c[i,:].mask].data)
+# It would be great to plot the spot and forward prices!
+plt.xlabel('Strike Price')
+plt.ylabel('Open Interest')

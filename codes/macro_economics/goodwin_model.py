@@ -77,7 +77,7 @@ k=0.25
 ## time, what units? make an array.
 ## Should be normalized maybe, what timescale to use?
 period=2*np.pi/np.sqrt((alpha+gamma)*(k/nu-(alpha+beta+delta)))
-ts=np.linspace(0,4*period,1e4)
+ts=np.linspace(start=0,stop=4*period,num=10000)
 
 def de_dt(e, t):
     return [e[0]*(-gamma-alpha+rho*e[1]), 
@@ -92,7 +92,9 @@ e0=[0.9,.7]
 e=integrate.odeint(de_dt,e0,ts)
 
 ## plot the phase portrait, employment rate as function of wage share
-plt.plot(e[:,0],e[:,1],'.k');plt.show()
+plt.figure()
+plt.plot(e[:,0],e[:,1],'.k');
+plt.show()
 
 ## Here is how you calculate aggregate output:
 ## output=a(t)*L(t)=a(t)*[N(t)*employment_rate(t)]
@@ -109,7 +111,10 @@ plt.plot(ts,e[:,0],'.k');plt.show()
 
 ## The "fun" plot: plot potential gross profit, 
 ## then gross output (GDP!) and total wages:
-plt.plot(ts,a0*N0*np.exp((alpha+beta)*ts),'-k');plt.plot(ts,q,'-b');plt.plot(ts,w,'-r');plt.show()
+plt.plot(ts,a0*N0*np.exp((alpha+beta)*ts),'-k',label='');
+plt.plot(ts,q,'-b',label='');
+plt.plot(ts,w,'-r',label='');
+plt.show()
 
 
 

@@ -714,7 +714,7 @@ for i in range(1,len(yc_indicator)):
 		#print(telapsed)
 		rem_dur=((strips_duration-telapsed)*(bond_purch>=strips30_start)+
 			(10-telapsed)*(bond_purch<strips30_start))
-		## plug remaining_duration into equation 22 from Gurkayanka; an array
+		## plug remaining_duration into equation 22 from Gurkaynak; an array
 		yeff=(zc.BETA0.loc[loop_date]+
 			zc.BETA1.loc[loop_date]*(1-np.exp(-rem_dur/zc.TAU1.loc[loop_date])
 			)/(rem_dur/zc.TAU1.loc[loop_date])+
