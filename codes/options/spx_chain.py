@@ -411,50 +411,7 @@ for i in range(len(df.index.levels[0])):
 ## Compute IV manually; vectorize in the future.
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## multiplier to extend the new basis beyond all_strikes[-1]
-mb=5
-spacing=int(mb*all_strikes[-1])+1
-new_basis=np.linspace(0,mb*all_strikes[-1],num=spacing)   
-iv_interp_c=np.zeros((len(df.index.levels[0]),len(new_basis)))
-iv_interp_p=np.zeros((len(df.index.levels[0]),len(new_basis)))
-#
-call_interp=np.zeros((len(df.index.levels[0]),len(new_basis)))
-cumul_dist_c=np.zeros((len(df.index.levels[0]),len(new_basis)))
-for i in range(len(df.index.levels[0])):
-    ## Further cleaning; maybe some of this can be done outside the loop?
-    ## get rid of any masked elements:
-    u=xclean_c[i,:][~iv_clean_c[i,:].mask].data
-    v=iv_clean_c[i,:][~iv_clean_c[i,:].mask].data
-    ## Have to do this for the clamping, for now
-    ## Inserting 0 should always work, since 0 is almost never a strike
-    #u=np.insert(u,0,0)
-    #u=np.append(u,all_strikes[-1]+100)
-    #v=np.insert(v,0,v[0])
-    #v=np.append(v,v[-1])
-    cs=CubicSpline(u,v,bc_type='clamped')
-    iv_interp_c[i,:][(new_basis>=u[0])&(new_basis<=u[-1])]=cs(
-        new_basis[(new_basis>=u[0])&(new_basis<=u[-1])])
-    ## make sure the iv is constant outside the data region.
-    iv_interp_c[i,:][new_basis<u[0]]=v[0]
-    iv_interp_c[i,:][new_basis>u[-1]]=v[-1]
-    for j in range(len(new_basis)):
-        call_interp[i,j],second_der,delta,gamma,vega,theta,rho=(
-            bs_analytical_solver(
-                spot_price, 
-                new_basis[j], 
-                rintp[i], 
-                texp[i]/365.24, 
-                iv_interp_c[i,j], 
-                o_type='c'))
-    temp=1+np.exp(rintp[i]*texp[i]/365.24)*np.diff(call_interp[i,:])
-    temp=np.append(temp,1)
-    cumul_dist_c[i,:]=temp
-    print('Finished iteration: '+str(i))
-    ## now for puts
-    
-    
-x_interp,y_interp=np.meshgrid(new_basis,texp)
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 ## Now that iv interpolation is complete, we use second derivative of BS
 ## model
 ask_iv_calc_c=np.zeros((len(df.index.levels[0]),len(df.index.levels[1])))
@@ -486,11 +443,66 @@ for i in range(len(df.index.levels[0])):
         else:
             ask_iv_calc_c[i,j]=np.nan
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## multiplier to extend the new basis beyond all_strikes[-1]
+mb=3
+spacing=int(mb*all_strikes[-1])+1
+new_basis=np.linspace(0,mb*all_strikes[-1],num=spacing)   
+iv_interp_c=np.zeros((len(df.index.levels[0]),len(new_basis)))
+iv_interp_p=np.zeros((len(df.index.levels[0]),len(new_basis)))
+#
+call_interp=np.zeros((len(df.index.levels[0]),len(new_basis)))
+cumul_dist_c=np.zeros((len(df.index.levels[0]),len(new_basis)))
+for i in range(len(df.index.levels[0])):
+    ## Further cleaning; maybe some of this can be done outside the loop?
+    ## get rid of any masked elements:
+    # u=xclean_c[i,:][~iv_clean_c[i,:].mask].data
+    # v=iv_clean_c[i,:][~iv_clean_c[i,:].mask].data
+    u=xclean_c[i,:][~np.isnan(ask_iv_calc_c[i,:])]
+    v=ask_iv_calc_c[i,:][~np.isnan(ask_iv_calc_c[i,:])]
+    ## Have to do this for the clamping, for now
+    ## Inserting 0 should always work, since 0 is almost never a strike
+    #u=np.insert(u,0,0)
+    #u=np.append(u,all_strikes[-1]+100)
+    #v=np.insert(v,0,v[0])
+    #v=np.append(v,v[-1])
+    cs=CubicSpline(u,v,bc_type='clamped')
+    iv_interp_c[i,:][(new_basis>=u[0])&(new_basis<=u[-1])]=cs(
+        new_basis[(new_basis>=u[0])&(new_basis<=u[-1])])
+    ## make sure the iv is constant outside the data region.
+    iv_interp_c[i,:][new_basis<u[0]]=v[0]
+    iv_interp_c[i,:][new_basis>u[-1]]=v[-1]
+    for j in range(len(new_basis)):
+        call_interp[i,j],second_der,delta,gamma,vega,theta,rho=(
+            bs_analytical_solver(
+                spot_price, 
+                new_basis[j], 
+                rintp[i], 
+                texp[i]/365.24, 
+                iv_interp_c[i,j], 
+                o_type='c'))
+        call_interp[i,j],second_der,delta,gamma,vega,theta,rho=(
+            bs_analytical_solver(
+                spot_price, 
+                new_basis[j], 
+                rintp[i], 
+                texp[i]/365.24, 
+                iv_interp_c[i,j], 
+                o_type='c'))
+    temp=1+np.exp(rintp[i]*texp[i]/365.24)*np.diff(call_interp[i,:])/np.diff(
+        new_basis)
+    temp=np.append(temp,1)
+    cumul_dist_c[i,:]=temp
+    print('Finished iteration: '+str(i))
+    ## now for puts
+    
+    
+x_interp,y_interp=np.meshgrid(new_basis,texp)
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Monotonic interpolation of calls and puts to get cumulative risk neutral
 ## distribution function.
 
 ## set up solution arrays
-call_interp=np.zeros((len(df.index.levels[0]),len(new_basis)))
+call_m_interp=np.zeros((len(df.index.levels[0]),len(new_basis)))
 call_deriv=np.zeros((len(df.index.levels[0]),len(new_basis)))
 put_interp=np.zeros((len(df.index.levels[0]),len(new_basis)))
 put_deriv=np.zeros((len(df.index.levels[0]),len(new_basis)))
@@ -508,7 +520,8 @@ for i in range(len(df.index.levels[0])):
     ## In the limit of k=0, call options have little or no extrinsic value;
     ## May want to rethink this at a later date just to confirm!
     ## My solution to the endpoint problem for now.
-    ## Inserting 0 should always work, since 0 is almost never a strike
+    ## Inserting 0 should always work with this command, since 0 is almost 
+    ## never a strike
     u=np.insert(u,0,0)
     ## Append the last element of the new basis?
     u=np.append(u,new_basis[-1])
@@ -520,9 +533,10 @@ for i in range(len(df.index.levels[0])):
     ## use a minus sign so that v is monotonically increasing instead of 
     ## decreasing; multiply by -1 later.
     call_mint=PchipInterpolator(x=u,y=v)
-    call_interp[i,:]=call_mint(new_basis)
+    call_m_interp[i,:]=call_mint(new_basis)
     ## get first derivative of the monotonic interpolation
     call_deriv[i,:]=call_mint(new_basis,nu=1)
+    
     ## find the forward price, get interest rate (NO DIVIDENDS??)
     f_price=new_basis[call_deriv[i,:]>=
                       (call_deriv[i,:][0]-call_deriv[i,:][-1]/2)][0]

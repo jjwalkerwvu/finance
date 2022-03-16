@@ -14,6 +14,7 @@ Created on Sun Sep 26 21:30:47 2021
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import calendar
 #import requests
 import ssl
 from urllib.request import Request, urlopen
@@ -22,43 +23,67 @@ from bs4 import BeautifulSoup
 #import re
 import os
 import sys
+import time
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '/Users/Jeff/Desktop/finance/codes/data_cleaning')
 from fred_api import fred_api
 
-## A quick function to get the checksum digit for an ISIN
+# A quick function to get the checksum digit for an ISIN
 def isin_checksum(cc,cusip):
-    ## check that cc and cusip are strings?
-    ## Too lazy for error checking right now
-    isin=cc+cusip
-    running_string=''
-    for i in range(len(isin)):
-        if isin[i].isdigit()==False:
-            number=str(ord(isin[i])-55)
-        else:
-            number=isin[i]
-        ## concatenate every number together, as string
-        running_string=running_string+number
-        #print(running_string)
+    # check that cc and cusip are strings?
+    # Too lazy for error checking right now.
+    # 26-Feb-2022: I finally realized that this does not work properly
+    
+    # isin=cc+cusip
+    # running_string=''
+    # for i in range(len(isin)):
+    #     if isin[i].isdigit()==False:
+    #         number=str(ord(isin[i])-55)
+    #     else:
+    #         number=isin[i]
+    #     ## concatenate every number together, as string
+    #     running_string=running_string+number
+    #     #print(running_string)
         
-    ## Now, operate on running_string
-    num_str=''
-    for i in range(len(running_string)):
-        ## For every OTHER digit, starting from rightmost digit, multiply by 2
-        ## This statement should be equivalent
-        if (i+1)%2!=0:
-            num_str=num_str+str(int(running_string[i])*2)
-        else:
-            num_str=num_str+running_string[i]
-    ## Now, add up all digits to get the sum
-    isin_sum=0
-    for a in num_str:
-        isin_sum=int(a)+isin_sum
-    ## Now find value, which is the smallest number greater than or equal to
-    ## bill_sum that ends in a zero
-    isin_value=np.ceil(isin_sum/10.0)*10
-    checksum=str(int(isin_value-isin_sum))    
+    # ## Now, operate on running_string
+    # num_str=''
+    # for i in range(len(running_string)):
+    #     ## For every OTHER digit, starting from rightmost digit, multiply by 2
+    #     ## This statement should be equivalent
+    #     if (i+1)%2!=0:
+    #         num_str=num_str+str(int(running_string[i])*2)
+    #     else:
+    #         num_str=num_str+running_string[i]
+    # ## Now, add up all digits to get the sum
+    # isin_sum=0
+    # for a in num_str:
+    #     isin_sum=int(a)+isin_sum
+    # ## Now find value, which is the smallest number greater than or equal to
+    # ## bill_sum that ends in a zero
+    # isin_value=np.ceil(isin_sum/10.0)*10
+    # checksum=str(int(isin_value-isin_sum))  
+    
+    # I found this on the internet, maybe try this instead.
+    # See arthurdejong's github page.
+    number=cc+cusip
+    _alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    # convert to numeric first, then double some, then sum individual digits
+    number = ''.join(str(_alphabet.index(n)) for n in number)
+    number = ''.join(
+        str((2, 1)[i % 2] * int(n)) for i, n in enumerate(reversed(number)))
+    checksum = str((10 - sum(int(n) for n in number)) % 10)
+
     return checksum
+
+
+def calc_check_digit(number):
+    """Calculate the check digits for the number."""
+    _alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    # convert to numeric first, then double some, then sum individual digits
+    number = ''.join(str(_alphabet.index(n)) for n in number)
+    number = ''.join(
+        str((2, 1)[i % 2] * int(n)) for i, n in enumerate(reversed(number)))
+    return str((10 - sum(int(n) for n in number)) % 10)
 
 # Should this be a static method or a standalone function in this module?
 def marketwatch_treasury_scraper(country_code,security_cusips,
@@ -113,6 +138,9 @@ def marketwatch_treasury_scraper(country_code,security_cusips,
                           pd.to_datetime(
                               security_maturities.values[j]
                               ).strftime("%Y-%m-%d"))
+                # I just want to make it wait a short amount of time to 
+                # minimize the chance that Marketwatch rejects my scraping.
+                time.sleep(1)
             except:
                 print("Failed to scrape CUSIP: "+
                           security_cusips.values[j]+
@@ -160,12 +188,17 @@ def cashflows_from_securities(securities_index,coupon_payment,
     # can bypass dataframe, if we have the index, first and second payments,
     # and maturity date
     
+    
     tnow=pd.to_datetime('today').now()
+    
     face_val=100
     # Try with note coupon dataframe first.
     coupon_df=[]
     maturity_df=[]
     for index in securities_index:
+        
+        #print(first_payment[index])
+        #print(second_payment[index])
     
         if first_payment[index].is_month_end:
             coupon_dates=(
@@ -240,7 +273,8 @@ class YieldCurve(object):
         # properly?
         
         # tolerance between coupons; in years
-        tol=31/365.24
+        # Maybe I could even make this 0
+        tol=15/365.24
         # "preallocate" for the spot yield?
         s=np.zeros(len(self.market_df))
         #s_ask=np.zeros(len(self.note_df))
@@ -351,7 +385,7 @@ class USYieldCurve(YieldCurve):
         #super().__init__(issuer, cashflow_df)
     
     @classmethod
-    def get_us_public_debt(cls):
+    def get_us_public_debt(cls, write_to_file=False):
         # Use this method as class method to fill in USYieldCurve instance
         # attributes.
         # You should only really need/want to run this once in a session.
@@ -381,11 +415,11 @@ class USYieldCurve(YieldCurve):
             year=str(one_month_ago.year)
             last_month=str(one_month_ago.month)
             if len(last_month)<2:
-                last_month='0'+last_month
-            print('Retrieving Statement of US Public Debt for date: ' + 
-                  one_month_ago.strftime('%Y-%m'))
+                last_month='0'+last_month        
             df=pd.read_excel(tr_url_base+year+'/opdm'+last_month+year+'.xls',
                      sheet_name=None)
+            print('Retrieving Statement of US Public Debt for date: ' + 
+                  one_month_ago.strftime('%Y-%m'))
             
         except:
             year=str(two_months_ago.year)
@@ -398,6 +432,10 @@ class USYieldCurve(YieldCurve):
                      sheet_name=None)
             
         print('Data Retrieved, now parsing.')
+        # I think I have to reset the year given from tnow in order for the
+        # first payment/second payment logic to work
+        # THIS MUST BE HERE! CONFIRMED WORKING AS OF 2022-03-11
+        year=str(tnow.year)
         
         # Get the last month; it is possible that it may take a while for the 
         # website to update the spreadsheet
@@ -477,11 +515,18 @@ class USYieldCurve(YieldCurve):
         #                 tnow.year)[2:]
                         
         # Reuse the year from the spreadsheet that we got earlier.
-        note_payable_dates=note_df[note_df.columns[8]].str.split(' ',3,expand=True
-                    ).replace(to_replace=[None],value=np.nan)+'/'+year[2:]                
+        note_payable_dates=note_df[note_df.columns[8]].str.split(
+            ' ',3,expand=True).replace(to_replace=[None],value=np.nan
+                                       )+'/'+year[2:]                
         note_payable_dates.columns=['first_payment','second_payment']
         note_first_payment=pd.to_datetime(note_payable_dates['first_payment'], 
                                   dayfirst=True,errors='coerce').ffill()
+        note_payable_dates[
+            (note_payable_dates['second_payment'].str[:5]=='02/29')
+            & [~calendar.isleap(int(year))]*len(note_payable_dates)]=('02/28/'
+                                                                + year[2:])
+         
+        #print(note_payable_dates['second_payment'])
         note_second_payment=pd.to_datetime(
                                 note_payable_dates['second_payment'], 
                                   dayfirst=True,errors='coerce').ffill()
@@ -491,9 +536,46 @@ class USYieldCurve(YieldCurve):
         # corresponds to the following calendar year.
         # If the first listed payment happens at a lower month, than the second
         # payment date, I presume the first payment has already occurred.
-        note_second_payment[
-            note_first_payment>note_second_payment]=note_second_payment[
-                note_first_payment>note_second_payment]+pd.DateOffset(years=1)
+        # note_second_payment[
+        #     note_first_payment>note_second_payment]=note_second_payment[
+        #         note_first_payment>note_second_payment]+pd.DateOffset(years=1)
+        
+        # Set aside the payments I have to change
+        wrong_payment_order=note_first_payment>note_second_payment
+        
+        # Need to hold onto these values for the second payment
+        note_first_payment_hold=note_first_payment[wrong_payment_order]
+        
+        note_first_payment[wrong_payment_order]=note_second_payment[
+                                                    wrong_payment_order]
+        
+        note_second_payment[wrong_payment_order]=(note_first_payment_hold)
+        
+        # If the first payment has already happened, we set 
+        # first payment equal to the second payment, add a year to the first
+        # payment and set second payment to the original first payment
+        
+        first_payment_paid=(tnow>note_first_payment)&(tnow<note_second_payment)
+        
+        first_payment_hold=note_first_payment[first_payment_paid]
+        
+        note_first_payment[first_payment_paid]=note_second_payment[
+                                                    first_payment_paid]
+        note_second_payment[first_payment_paid]=(first_payment_hold
+                                                 + pd.DateOffset(years=1))
+        
+        # The first and second payments may have already happened; add a year
+        # to both if that is the case.
+        
+        both_payments_paid=(tnow>note_first_payment)&(tnow>note_second_payment)
+        
+        note_first_payment[both_payments_paid]=note_first_payment[
+                                    both_payments_paid]+pd.DateOffset(years=1)
+        note_second_payment[both_payments_paid]=note_second_payment[
+                                    both_payments_paid]+pd.DateOffset(years=1)
+                    
+        
+        
         
         drop_cols=[0,1,5,8,10,12,14]
         note_df=note_df.drop(note_df.columns[drop_cols],axis=1).fillna(
@@ -534,10 +616,45 @@ class USYieldCurve(YieldCurve):
         bond_second_payment=pd.to_datetime(
                                 bond_payable_dates['second_payment'], 
                                   dayfirst=True,errors='coerce').ffill()
-        bond_second_payment[
-            bond_first_payment>bond_second_payment]=bond_second_payment[
-                bond_first_payment>bond_second_payment]+pd.DateOffset(years=1)
+        # bond_second_payment[
+        #     bond_first_payment>bond_second_payment]=bond_second_payment[
+        #         bond_first_payment>bond_second_payment]+pd.DateOffset(years=1)
         
+        # Set aside the payments I have to change
+        wrong_payment_order=bond_first_payment>bond_second_payment
+        
+        # Need to hold onto these values for the second payment
+        bond_first_payment_hold=bond_first_payment[wrong_payment_order]
+        
+        bond_first_payment[wrong_payment_order]=bond_second_payment[
+                                                    wrong_payment_order]
+        
+        bond_second_payment[wrong_payment_order]=(bond_first_payment_hold) 
+        
+        # If the first payment has already happened, we set 
+        # first payment equal to the second payment, add a year to the first
+        # payment and set second payment to the original first payment
+        
+        first_payment_paid=(tnow>bond_first_payment)&(tnow<bond_second_payment)
+        
+        first_payment_hold=bond_first_payment[first_payment_paid]
+        
+        bond_first_payment[first_payment_paid]=bond_second_payment[
+                                                    first_payment_paid]
+        bond_second_payment[first_payment_paid]=(first_payment_hold
+                                                 + pd.DateOffset(years=1))
+        
+        # The first and second payments may have already happened; add a year
+        # to both if that is the case.
+        
+        both_payments_paid=(tnow>bond_first_payment)&(tnow>bond_second_payment)
+        
+        bond_first_payment[both_payments_paid]=bond_first_payment[
+                                    both_payments_paid]+pd.DateOffset(years=1)
+        bond_second_payment[both_payments_paid]=bond_second_payment[
+                                    both_payments_paid]+pd.DateOffset(years=1)
+        
+                
         drop_cols=[0,1,5,8,10,12,14]
         bond_df=bond_df.drop(bond_df.columns[drop_cols],axis=1).fillna(
             method='ffill')
@@ -580,9 +697,44 @@ class USYieldCurve(YieldCurve):
         tips_second_payment=pd.to_datetime(
                                 tips_payable_dates['second_payment'], 
                                   dayfirst=True,errors='coerce').ffill()
-        tips_second_payment[
-            tips_first_payment>tips_second_payment]=tips_second_payment[
-                tips_first_payment>tips_second_payment]+pd.DateOffset(years=1)
+        # tips_second_payment[
+        #     tips_first_payment>tips_second_payment]=tips_second_payment[
+        #         tips_first_payment>tips_second_payment]+pd.DateOffset(years=1)
+        
+        # Set aside the payments I have to change
+        wrong_payment_order=tips_first_payment>tips_second_payment
+        
+        # Need to hold onto these values for the second payment
+        tips_first_payment_hold=tips_first_payment[wrong_payment_order]
+        
+        tips_first_payment[wrong_payment_order]=tips_second_payment[
+                                                    wrong_payment_order]
+        
+        tips_second_payment[wrong_payment_order]=(tips_first_payment_hold)
+        
+        # If the first payment has already happened, we set 
+        # first payment equal to the second payment, add a year to the first
+        # payment and set second payment to the original first payment
+        
+        first_payment_paid=(tnow>tips_first_payment)&(tnow<tips_second_payment)
+        
+        first_payment_hold=tips_first_payment[first_payment_paid]
+        
+        tips_first_payment[first_payment_paid]=tips_second_payment[
+                                                    first_payment_paid]
+        tips_second_payment[first_payment_paid]=(first_payment_hold
+                                                 + pd.DateOffset(years=1))
+        
+        # The first and second payments may have already happened; add a year
+        # to both if that is the case.
+        
+        both_payments_paid=(tnow>tips_first_payment)&(tnow>tips_second_payment)
+        
+        tips_first_payment[both_payments_paid]=tips_first_payment[
+                                    both_payments_paid]+pd.DateOffset(years=1)
+        tips_second_payment[both_payments_paid]=tips_second_payment[
+                                    both_payments_paid]+pd.DateOffset(years=1)
+        
         drop_cols=[0,1,5,8,10,12,14]
         tips_df=tips_df.drop(tips_df.columns[drop_cols],axis=1).fillna(
             method='ffill')
@@ -800,6 +952,8 @@ class USYieldCurve(YieldCurve):
         cashflow_df=pd.concat([bill_cashflow,note_coupon_df,bond_coupon_df],axis=1)
         maturity_df=pd.concat([bill_maturity,note_maturity_df,bond_maturity_df],axis=1)
         # Maybe there should be a TIPS cashflow??
+        # Yes, need something separate for that.
+        # SAVE THE CASHFLOW AND MATURITY DATAFRAMES!
         
         market_df=0
         
@@ -886,7 +1040,10 @@ class USYieldCurve(YieldCurve):
         
         # Calculate accrued interest here. Should this go into class method?
         # Does not seem like a great idea to put here
-        most_recent_payment=self.note_df.note_first_payment
+        # Have to add the offset because otherwise the first payment will get 
+        # changed
+        most_recent_payment=(self.note_df.note_first_payment
+                             + pd.DateOffset(days=0))
         most_recent_payment[(tnow-self.note_df.note_second_payment
                              )/np.timedelta64(1,'D')>0
                             ]=self.note_df.note_second_payment[
@@ -909,9 +1066,33 @@ class USYieldCurve(YieldCurve):
             )/np.timedelta64(1,'D')/coupon_period*self.note_df.note_coupon/2
         ai.rename("note_accrued_interest",axis=1,inplace=True)
         
+        
+        
         # Update note dataframe with yields and prices from Marketwatch data
         # Raise error is smarter here instead of just plowing ahead
         self.note_df=pd.concat([self.note_df,ai,note_data],axis=1)
+        
+        # We should calculate Macaulay duration here.
+        # Need to re-calculate prices; I don't trust market_price
+        #self.maturity_df[self.note_df.index.astype(str)].values*self.cashflow_df[self.note_df.index.astype(str)].values
+        #d=1/(1+self.note_df.market_yield/2)**(2*self.maturity_df[self.note_df.index.astype(str)].values)
+        mac_dur=np.zeros(len(self.note_df))
+        for counter,cusip_row in enumerate(self.note_df.index):
+            fact=self.maturity_df[str(cusip_row)
+                                ].dropna().values*self.cashflow_df[
+                str(cusip_row)].dropna().values
+            d=1/(1+self.note_df.market_yield[cusip_row]/200)**(
+                    2*self.maturity_df[str(cusip_row)].dropna().values)
+            # price=np.sum(self.cashflow_df[str(cusip_row)].dropna().values*d)
+            # print(price)
+            mac_dur[counter]=np.sum(fact*d)/(
+                self.note_df.market_price[cusip_row]
+                + self.note_df.note_accrued_interest[cusip_row])    
+        
+        mac_dur=pd.Series(data=mac_dur,index=self.note_df.index,
+                          name='note_mac_dur')
+        # Update with Macaulay duration 
+        self.note_df=pd.concat([self.note_df,mac_dur],axis=1)
         
         if write_to_file==True:
             try:
@@ -955,7 +1136,10 @@ class USYieldCurve(YieldCurve):
         
         # Calculate accrued interest here. Should this go into class method?
         # Does not seem like a great idea to put here
-        most_recent_payment=self.bond_df.bond_first_payment
+        # Have to add the offset because otherwise the first payment will get 
+        # changed
+        most_recent_payment=(self.bond_df.bond_first_payment
+                             + pd.DateOffset(days=0))
         most_recent_payment[(tnow-self.bond_df.bond_second_payment
                              )/np.timedelta64(1,'D')>0
                             ]=self.bond_df.bond_second_payment[
@@ -981,6 +1165,24 @@ class USYieldCurve(YieldCurve):
         # Update note dataframe with yields and prices from Marketwatch data
         # Raise error is smarter here instead of just plowing ahead
         self.bond_df=pd.concat([self.bond_df,ai,market_data],axis=1)
+        
+        # We should calculate Macaulay duration here.
+        # Need to re-calculate prices; I don't trust market_price
+        mac_dur=np.zeros(len(self.bond_df))
+        for counter,cusip_row in enumerate(self.bond_df.index):
+            fact=self.maturity_df[str(cusip_row)
+                                ].dropna().values*self.cashflow_df[
+                str(cusip_row)].dropna().values
+            d=1/(1+self.bond_df.market_yield[cusip_row]/200)**(
+                    2*self.maturity_df[str(cusip_row)].dropna().values)
+            mac_dur[counter]=np.sum(fact*d)/(
+                self.bond_df.market_price[cusip_row]
+                + self.bond_df.bond_accrued_interest[cusip_row])
+        
+        mac_dur=pd.Series(data=mac_dur,index=self.bond_df.index,
+                          name='bond_mac_dur')
+        # Update with Macaulay duration 
+        self.bond_df=pd.concat([self.bond_df,mac_dur],axis=1)
         
         if write_to_file==True:
             try:
@@ -1025,7 +1227,10 @@ class USYieldCurve(YieldCurve):
         
         # Calculate accrued interest here. Should this go into class method?
         # Does not seem like a great idea to put here
-        most_recent_payment=self.tips_df.tips_first_payment
+        # Have to add the offset because otherwise the first payment will get 
+        # changed
+        most_recent_payment=(self.tips_df.tips_first_payment
+                             + pd.DateOffset(days=0))
         most_recent_payment[(tnow-self.tips_df.tips_second_payment
                              )/np.timedelta64(1,'D')>0
                             ]=self.tips_df.tips_second_payment[
@@ -1051,6 +1256,24 @@ class USYieldCurve(YieldCurve):
         # Update note dataframe with yields and prices from Marketwatch data
         # Raise error is smarter here instead of just plowing ahead
         self.tips_df=pd.concat([self.tips_df,ai,market_data],axis=1)
+        
+        # We should calculate Macaulay duration here.
+        # Need to re-calculate prices; I don't trust market_price
+        # mac_dur=np.zeros(len(self.tips_df))
+        # for counter,cusip_row in enumerate(self.tips.index):
+        #     fact=self.maturity_df[str(cusip_row)
+        #                         ].dropna().values*self.cashflow_df[
+        #         str(cusip_row)].dropna().values
+        #     d=1/(1+self.tips_df.market_yield[cusip_row]/200)**(
+        #             2*self.maturity_df[str(cusip_row)].dropna().values)
+        #     mac_dur[counter]=np.sum(fact*d)/(
+        #         self.tips_df.market_price[cusip_row]
+        #         + self.tips_df.bond_accrued_interest[cusip_row])
+        
+        # mac_dur=pd.Series(data=mac_dur,index=self.tips_df.index,
+        #                   name='tips_mac_dur')
+        # # Update with Macaulay duration 
+        # self.tips_df=pd.concat([self.tips_df,mac_dur],axis=1)
         
         if write_to_file==True:
             try:
@@ -1162,6 +1385,64 @@ class USYieldCurve(YieldCurve):
         
         return
     
+    def get_on_the_runs(self):
+        # A method to scrape information for on-the-run securities, which are
+        # not in the statement of the public debt.
+        
+        otrs=['01m','03m','06m','01y','02y','03y','05y','07y','10y','20y','30y']
+        
+        base_url='https://www.marketwatch.com/investing/bond/'
+        preamble='tmubmusd'
+        suffix='?countrycode=bx'
+        
+        for counter,otr in enumerate(otrs):
+            url=base_url+preamble+otr+suffix    
+        
+        return
+    
+    
+    def plot_notes_and_bonds(self,ctds=[],
+                        write_path='/Users/jeff/Desktop/finance/data/bonds',
+                        write_to_file=False):
+        # First check if there are any elements in the cheapest to deliver list.
+        
+        tnow=pd.to_datetime('today').now()
+        #tstr=tnow.strftime("%Y-%m-%d %H:%M")
+        tstr=tnow.strftime("%Y-%b-%d %H:%M")
+        
+        plt.figure();
+        plt.title('US Note and Bond Yields as of: '+tstr)
+        plt.plot(pd.to_datetime(self.note_df.note_maturity_date),
+                 self.note_df.market_yield,'.',markersize=2,label='Notes')
+        plt.plot(pd.to_datetime(self.bond_df.bond_maturity_date),
+                 self.bond_df.market_yield,
+                     '.',markersize=2,label='Bonds')
+        plt.xlim(tnow,pd.to_datetime(self.bond_df.bond_maturity_date[
+                self.bond_df.bond_maturity_date.index[-1]]))
+        plt.xlabel('Maturity Date')
+        plt.ylabel('Yield (%)')
+        #plt.ylim()
+        plt.legend(loc='best')
+        plt.tight_layout()
+
+        # plt.savefig('/Users/jeff/Desktop/finance/data/bonds/'+'ytm_curve'
+        #             +tnow.strftime("%Y_%m_%d_%H_%M")+'.png')
+        
+        if write_to_file==True:
+            try:
+                path=write_path+tnow.strftime("/%Y/%m/%d/")
+                os.makedirs(path, exist_ok=True)
+                tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
+                # We do not need the whole file.
+                plt.savefig(path
+                    + 'us_treasury_curve'
+                    + tnow_str+'.png')
+                print('Data successfully printed to file.')
+            except:
+                print('Something bad happened, and your plot did not save.')
+
+        
+        return
     
 class FedFundsFutures(YieldCurve):
     def __init__(self, 
@@ -1280,6 +1561,7 @@ class FedFundsFutures(YieldCurve):
         query_string.insert(0,'spot_price')
         t_settlement=np.insert(t_settlement,0,0)
         settlement_date=settlement_date.insert(0,dff.index[-1])
+        # Convexity bias correction?
         #ff_forward=ff_rate-0.5*sigma_fedfunds_1year*T_1*T_2
         
         # Initialize yield array for the loop
@@ -1324,6 +1606,203 @@ class FedFundsFutures(YieldCurve):
             maturity_df,
             market_df)
     
+    def plot_fedfunds_zero_curve(self,
+                        write_path='/Users/jeff/Desktop/finance/data/bonds',
+                        write_to_file=False):
+        # First check if there are any elements in the cheapest to deliver list.
         
+        tnow=pd.to_datetime('today').now()
+        tstr=tnow.strftime("%Y-%b-%d %H:%M")
+        
+        plt.figure();
+        plt.title('FedFunds zero curve as of: '+tstr)
+        plt.plot(pd.to_datetime(self.market_df),
+                 100*self.market_df.implied_yield,'.',markersize=2,
+                 label='FedFunds Implied Yield')
+        plt.xlim(tnow,pd.to_datetime(self.market_df.index[-1]))
+        #plt.ylim()
+        plt.ylabel('Yield (%)')
+        plt.xlabel('Maturity Date')
+        plt.legend(loc='best')
+        plt.tight_layout()
+        
+        if write_to_file==True:
+            try:
+                path=write_path+tnow.strftime("/%Y/%m/%d/")
+                os.makedirs(path, exist_ok=True)
+                tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
+                # We do not need the whole file.
+                plt.savefig(path
+                    + 'fedfunds_zero_curve'
+                    + tnow_str+'.png')
+                print('Data successfully printed to file.')
+            except:
+                print('Something bad happened, and your plot did not save.')
+        
+
+        
+        return
+    
+class EurodollarFutures(YieldCurve):
+    def __init__(self, 
+                 issuer,
+                 cashflow_df,
+                 maturity_df,
+                 market_df):
+        
+        self.issuer='US'
+        self.cashflow_df=cashflow_df
+        self.maturity_df=maturity_df
+        self.market_df=market_df
+        
+    @classmethod
+    def get_eurodollar_futures(cls,
+                        write_path='/Users/jeff/Desktop/finance/data/bonds',
+                        write_to_file=False):
+        # Use Marketwatch to scrape fed funds futures prices.
+        # Consider generalizing this approach, because I will need to do
+        # something similar for SOFR futures and possibly other rate futures
+        
+        # Should be a way to go to FRBNY to get last night's fed funds rate 
+        # for the t=1 day point, see below.
+        
+        # First, generate all available Fed Funds futures quotes based on 
+        # the current day.
+        # There are 36 months of contracts open at any time
+        # However, I see marketwatch give contracts out five years or so,
+        # what gives?
+        tnow=pd.to_datetime('today').now()
+        
+        tend=tnow-pd.DateOffset(months=1)+pd.DateOffset(years=10)
+        
+        query_dates=pd.date_range(start=tnow-pd.DateOffset(tnow.day),
+                                  end=tend,freq='Q')
+        
+        
+        #futures_months=[1,2,3,4,5,6,7,8,9,10,11,12]
+        #futures_codes=['F','G','H','J','K','M','N','Q','U','V','X','Z']
+        futures_codes=['f','g','h','j','k','m','n','q','u','v','x','z']
+        
+        #closest_month=min(futures_months,key=lambda x:(tnow.month-x)>0)
+
+        
+        query_string=['ed'+(str(futures_codes[date.month-1])+
+                            str(date.year)[2:]) for date in query_dates]
+        
+        base_url='https://www.marketwatch.com/investing/future/'
+        
+        # Ignore SSL Certificate errors
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        price=np.zeros(len(query_string))
+        
+        for j in range(len(query_string)):
+            url=base_url+query_string[j]
+            req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            webpage = urlopen(req).read()
+            soup=BeautifulSoup(webpage, 'html5lib')
+            try:
+                price[j]=float(soup.find('td',{"class": "table__cell u-semi"}
+                                              ).get_text().replace('$',''))
+                print("Succesfully scaped data for Eurodollar contract: " +
+                      query_string[j])
+            except:
+                print("Unable to obtain data for Eurodollar contract: " +
+                      query_string[j])
+            
+
+        # I assume the yields are quoted on an annualized basis.
+        #ff_rate=100-price
+        
+        # Following Hull for converting ed futures forward price to a 
+        # continuous compounding rate
+        ed_rate=12*np.log(1+(100-price)/100/12)
+        
+        
+        
+        # The query_date array needs to be modified to correspond to the 
+        # futures expiration date, which is the last business day of the month?
+        settlement_date=pd.date_range(start=tnow,
+                                  end=tend+pd.DateOffset(months=3),freq='Q')
+        
+        t_settlement=(settlement_date-tnow).days/365.24
+        
+        # This looks too difficult for me to tackle at this time; use the Fred
+        # API instead.
+        # dff=fred_api(series_id='DFF',
+        #              realtime_start=(tnow-pd.DateOffset(years=1)
+        #                              ).strftime('%Y-%m-%d'),
+        #              realtime_end=tnow.strftime('%Y-%m-%d'))
+        
+        # Find the annualized volatility in the fed funds rate.
+        # sigma_fedfunds_1year=dff.std()
+        
+        # fill in the most recent overnight rate from FRBNY, maybe scrape this
+        # using my fred_api function/class. Insert most recent overnight rate
+        # in front of the data, with date=tnow and t_settlement=0
+        #frbny_url='https://www.newyorkfed.org/markets/reference-rates/effr'
+        #req = Request(frbny_url, headers={'User-Agent': 'Mozilla/5.0'})
+        #webpage = urlopen(req).read()
+        #soup=BeautifulSoup(webpage, 'html5lib')
+        
+        
+        # Include ff_forward once fred_api is online.
+        # Follow Hull here to make convexity adjustment to the futures price
+        # and turn it into a forward
+        # Insert fedfunds date from yesterday
+        ed_rate=np.insert(ed_rate,0,dff[-1]/100)
+        # setting this as the value for price is meaningless, but I need a 
+        # value to put here; it is essentially the spot price
+        price=np.insert(price,0,100-dff[-1])
+        # Insert the spot price to the list of futures contracts.
+        query_string.insert(0,'spot_price')
+        t_settlement=np.insert(t_settlement,0,0)
+        settlement_date=settlement_date.insert(0,dff.index[-1])
+        # Convexity bias correction?
+        #ff_forward=ff_rate-0.5*sigma_fedfunds_1year*T_1*T_2
+        
+        # Initialize yield array for the loop
+        y=np.zeros(len(query_string))
+        y[0]=ed_rate[0]
+        
+        
+        for index in range(len(y)-1):
+            y[index+1]=(ff_rate[index]*(t_settlement[index+1]-
+                        t_settlement[index])+y[index]*t_settlement[index])/(
+                        t_settlement[index+1])
+        
+        
+        
+        # How to handle cashflow for futures? I left it at 0 for now.
+        cashflow_df=0
+        # Something like this; maybe a column for each futures contract but
+        # it will just be a "diagonal" data frame
+        maturity_df=pd.DataFrame(data=t_settlement,index=settlement_date,
+                        columns=['t_settlement'])
+        # I am using market_df as placeholder for all the data for now
+        market_df=pd.DataFrame(data={'ed_contract':query_string,
+                                     'ed_price':price,
+                                     'ed_rate':ff_rate,
+                                     'implied_yield':y,
+                                     't_settlement':t_settlement},
+                                   index=pd.DatetimeIndex(settlement_date))
+        if write_to_file==True:
+            try:
+                path=write_path+tnow.strftime("/%Y/%m/%d")
+                os.makedirs(path, exist_ok=True)
+                tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
+                file=path+'/'+'eurodollar_futures_'+tnow_str+'.txt'
+                # We do not need the whole file.
+                market_df.to_csv(file,sep=',')
+                print('Data successfully printed to file.')
+            except:
+                print('Something bad happened, and your file did not save.')
+        
+        return cls('US',
+            cashflow_df,
+            maturity_df,
+            market_df)        
     
         

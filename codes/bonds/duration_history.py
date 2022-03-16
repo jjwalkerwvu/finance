@@ -600,7 +600,8 @@ cash=cash[cash.columns[0]]
 # do 60/40 vfinx/vfitx split, cross check with portfolio visualizer!
 # (I have to use first of the month here because of TB3MS)
 #start_date='1971-12'
-start_date='1976-12'
+#start_date='1963'
+#start_date='1976-12'
 #start_date='1986-01'
 #start_date='1986-05'
 #start_date='1980-03'
@@ -609,19 +610,22 @@ start_date='1976-12'
 #start_date='2009-01'
 #start_date='1991-11'
 #start_date='1990-12'
-#start_date='1963-01-31'
+#start_date='1962-01'
 #start_date='1994-01'
 #start_date='1955-03-31'
-#start_date='1955'
+start_date='1955'
 #start_date='1954-07'
+#start_date='1994'
 #end_date='2021-09-30'
 #end_date='2021-02'
 #end_date='2019-03'
 #end_date='1981-09-30'
+#end_date='1981'
 #end_date='1990-12'
 #end_date='1995-01'
 #end_date='2009-03'
 end_date='2021-10'
+#end_date='2022-01'
 
 
 # In case you want to use shiller sp500 returns data:
@@ -645,6 +649,10 @@ vustx_abbrev=(y20_splice[start_date:end_date].cumprod()).resample('M').last()
 #vustx_abbrev=gs20_ret[start_date:end_date].cumprod()
 #vustx_abbrev=((zc25_ret[zc25_ret.columns[0]][start_date:end_date]).cumprod()).resample('M').last()
 cash_abbrev=cash[start_date:end_date].resample('M').last()
+# Simulate a small additional cost of leverage, 40 bps (unrealistic! should 
+# change based on cyclical rate changes)
+borrow_rate=cash_abbrev+0.4
+
 dtb3_abbrev=dtb3.DTB3[start_date:end_date].resample('M').last()
 fedfunds_abbrev=fedfunds.FEDFUNDS[start_date:end_date].resample('M').last()
 # A special data series for the duration multiplier between "VUSTX" and "VFITX:
@@ -656,20 +664,24 @@ fedfunds_abbrev=fedfunds.FEDFUNDS[start_date:end_date].resample('M').last()
 #dur_multiplier=(gs5_dur/gs20_dur)[start_date:end_date].resample('M').last()
 #dur_multiplier=(svenpy5_dur/svenpy20_dur)[start_date:end_date].resample('M').last()
 #dur_multiplier=(gs5_dur/25.0)[start_date:end_date].resample('M').last()
-dur_multiplier=y5_dur_splice[start_date:end_date].resample('M').last()/y20_dur_splice[start_date:end_date].resample('M').last()
+#dur_multiplier=y5_dur_splice[start_date:end_date].resample('M').last()/y20_dur_splice[start_date:end_date].resample('M').last()
+# Other way around:
+dur_multiplier=y20_dur_splice[start_date:end_date].resample('M').last()/y5_dur_splice[start_date:end_date].resample('M').last()
 #dur_multiplier=(y5_dur_splice/24.5)[start_date:end_date].resample('M').last()
+#dur_multiplier=(24.5/y5_dur_splice)[start_date:end_date].resample('M').last()
+
 #dur_multiplier=1.35/4.00*vfinx_abbrev**0
 #dur_multiplier=1.35/2.5*vfinx_abbrev**0
 #dur_multiplier=0.5*vfinx_abbrev**0
 # The ridiculous, overfit 214% leverage ratio
 #dur_multiplier=1.35/2.98*vfinx_abbrev**0
 
-#frac_vustx=1.35
-frac_vfinx=1.2
+frac_vustx=1.0
+frac_vfinx=0
 #frac_vfitx=2.98
-frac_vfitx=2.14
-frac_vustx=dur_multiplier[0]*frac_vfitx
-#frac_vfitx=dur_multiplier[0]*frac_vustx
+#frac_vfitx=2.50
+#frac_vustx=dur_multiplier[0]*frac_vfitx
+frac_vfitx=dur_multiplier[0]*frac_vustx
 # a debt ratio?
 #frac_itt_debt=1-(frac_vfinx+frac_vfitx)
 start_cash=10e3
@@ -718,6 +730,7 @@ fedfunds_years=(fedfunds_abbrev.index[1:]-fedfunds_abbrev.index[:-1]).days/360
 
 
 
+# I had added a 1 to len(vfinx_abbrev) before, but I don't remember why
 for i in range(1,len(vfinx_abbrev.index[1:])+1):
     # Calculate the current value of a basic portfolio
     #port_val[i]=nvustx[i-1]*vustx_abbrev[i]+nvfinx[i-1]*vfinx_abbrev[i]
@@ -726,12 +739,16 @@ for i in range(1,len(vfinx_abbrev.index[1:])+1):
     #nvfinx[i]=port_val[i]*frac_vfinx/vfinx_abbrev[i]
     
     # The original HFEA leveraged portfolio
+    # sp500_ltt[i]=(nvustx[i-1]*vustx_abbrev[i]+
+    #               nsp500_ltt[i-1]*vfinx_abbrev[i]-
+    #               debt_ltt[i-1]*cash_abbrev[i-1]/12/100
+    #               -debt_ltt[i-1])
     sp500_ltt[i]=(nvustx[i-1]*vustx_abbrev[i]+
                   nsp500_ltt[i-1]*vfinx_abbrev[i]-
-                  debt_ltt[i-1]*cash_abbrev[i-1]/12/100
+                  debt_ltt[i-1]*borrow_rate[i-1]/12/100
                   -debt_ltt[i-1])
     # recalculate the duration multiplier (to keep same risk as vfitx)
-    frac_vustx=dur_multiplier[i]*frac_vfitx
+    #frac_vustx=dur_multiplier[i]*frac_vfitx
     # Now adjust the shares to be in-line with the asset allocation; reset
     # the leverage as well
     debt_ltt[i]=-(1-frac_vfinx-frac_vustx)*sp500_ltt[i]
@@ -742,12 +759,16 @@ for i in range(1,len(vfinx_abbrev.index[1:])+1):
     ltt_leverage[i]=frac_vfinx+frac_vustx-1
     
     # A leveraged portfolio needs to pay the interest, 
+    # sp500_itt[i]=(nvfitx[i-1]*vfitx_abbrev[i]+
+    #               nsp500_itt[i-1]*vfinx_abbrev[i]-
+    #               debt[i-1]*cash_abbrev[i-1]/12/100
+    #               -debt[i-1])
     sp500_itt[i]=(nvfitx[i-1]*vfitx_abbrev[i]+
                   nsp500_itt[i-1]*vfinx_abbrev[i]-
-                  debt[i-1]*cash_abbrev[i-1]/12/100
+                  debt[i-1]*borrow_rate[i-1]/12/100
                   -debt[i-1])
     # recalculate the duration multiplier (to keep same risk as vustx)
-    #frac_vfitx=dur_multiplier[i]*frac_vustx
+    frac_vfitx=dur_multiplier[i]*frac_vustx
     # Now adjust the shares to be in-line with the asset allocation; reset
     # the leverage as well
     debt[i]=-(1-frac_vfinx-frac_vfitx)*sp500_itt[i]
@@ -858,10 +879,14 @@ plt.tight_layout()
     
 # Interesting, "telltale chart" 
 plt.figure();
-plt.title('ITT/LTT Telltale Chart')
+plt.title('('+str('%.0f' %(frac_vfinx*100))+' SP500 + '
+          +str('%.0f' %(frac_vfitx*100))+' ITT)/('
+          +str('%.0f' %(frac_vfinx*100))+' SP500 + LTT) Telltale Chart')
 plt.plot(sp500_itt_series/sp500_ltt_series);plt.yscale('log')
 plt.ylabel('(ITT Portfolio Value)/(LTT Portfolio Value)')
 plt.xlabel('Date')
+plt.tight_layout()
+#plt.savefig('hfea_mhfea_telltale_chart.png')
 
 # plot the leverage above 100%
 plt.figure();

@@ -25,15 +25,18 @@ nyears=30
 npayments=nyears*(1/freq)
 
 ## as an example, consider a mortgage:
-principal=400e3
+principal=300e3
 ## the mortgage payment, from the annuity equation
 ## interest rate of mortgage
 r_mort=0.025
 mort=principal*(r_mort*freq*(1+r_mort*freq)**(npayments)/
                 ((1+r_mort*freq)**npayments-1))
 
+
 ## required payment and frequency (/year)
 p=1.0*mort/freq
+# Or just input a fixed liability ammount per year
+#p=9e3
 
 
 ## array of time until each payment

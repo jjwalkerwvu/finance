@@ -1176,7 +1176,54 @@ plt.savefig(path+'ytm_curve'+tnow_str+'.png')
 ## grab the price, because we can why not
 #matches=re.finditer(r'Price',soup.body.text)
 
+# Placing some random plot commands here
+plt.figure();
+plt.title('US Note and Bond Yields at Market Close on 25-Feb 2022')
+plt.plot(treasuries.note_df.note_maturity_date,treasuries.note_df.market_yield,
+         '.',markersize=2,label='Notes')
+plt.plot(treasuries.bond_df.bond_maturity_date,treasuries.bond_df.market_yield,
+         '.',markersize=2,label='Bonds')
+plt.plot(treasuries.note_df.note_maturity_date[
+    treasuries.note_df.note_cusip=='912828W71'],
+    treasuries.note_df.market_yield[
+        treasuries.note_df.note_cusip=='912828W71'],'P',label='TU CTD')
+plt.plot(pd.to_datetime('2024-02-28'),1.576,'s',label='2 year OTR')
+plt.plot(treasuries.note_df.note_maturity_date[
+    treasuries.note_df.note_cusip=='9128284F4'],
+    treasuries.note_df.market_yield[
+        treasuries.note_df.note_cusip=='9128284F4'],'^g',label='Z3N CTD')
+plt.plot(pd.to_datetime('2025-02-15'),1.759,'s',label='3 year OTR')
+plt.plot(treasuries.note_df.note_maturity_date[
+    treasuries.note_df.note_cusip=='91282CCW9'],
+    treasuries.note_df.market_yield[
+        treasuries.note_df.note_cusip=='91282CCW9'],'<',label='FV CTD')
+plt.plot(pd.to_datetime('2027-02-28'),1.87,'s',label='5 year OTR')
+plt.plot(treasuries.note_df.note_maturity_date[
+    treasuries.note_df.note_cusip=='9128286B1'],
+    treasuries.note_df.market_yield[
+        treasuries.note_df.note_cusip=='9128286B1'],'k>',label='ZN CTD')
+plt.plot(pd.to_datetime('2029-02-28'),1.958,'s',label='7 year OTR')
+plt.plot(treasuries.note_df.note_maturity_date[
+    treasuries.note_df.note_cusip=='91282CDJ7'],
+    treasuries.note_df.market_yield[
+        treasuries.note_df.note_cusip=='91282CDJ7'],'v',label='TN CTD')
+plt.plot(pd.to_datetime('2032-02-15'),1.969,'s',label='10 year OTR')
+plt.plot(treasuries.bond_df.bond_maturity_date[
+    treasuries.bond_df.bond_cusip=='912810PW2'],
+    treasuries.bond_df.market_yield[
+        treasuries.bond_df.bond_cusip=='912810PW2'],'p',label='ZB CTD')
+plt.plot(pd.to_datetime('2042-02-15'),2.358,'sk',label='20 year OTR')
+plt.plot(treasuries.bond_df.bond_maturity_date[
+    treasuries.bond_df.bond_cusip=='912810RY6'],
+    treasuries.bond_df.market_yield[
+        treasuries.bond_df.bond_cusip=='912810RY6'],'x',label='UB CTD')
+plt.plot(pd.to_datetime('2052-02-15'),2.277,'s',label='30 year OTR')
+plt.xlabel('Maturity Date')
+plt.ylabel('Yield to Maturity (%)')
+plt.ylim(0)
+plt.xlim(pd.to_datetime('2022-02-25'),pd.to_datetime('2052-02-15'))
 
+plt.legend(loc='best')
+plt.tight_layout()
 
-
-
+plt.savefig('/Users/jeff/Desktop/finance/data/bonds/'+'ytm_curve'+'2022_02_25'+'.png')
