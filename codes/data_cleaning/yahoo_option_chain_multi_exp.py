@@ -52,29 +52,35 @@ def yahoo_option_chain_multi_exp(input_path,ticker,scrape=True):
 	## the time zone where the code is run, possible check your location to 
 	## obtain. Could possibly use as an input, but it might be nice to check
 	## the device's location to obtain automatically with this function
-	timezone='CET'
+    timezone='CET'
 	## target directory? Currently an input to the function, but maybe have 
 	## some default if this is not specified by the user.
 	#target_dir='/home/jjwalker/Desktop/finance/data/options'
-	target_dir=input_path
+    target_dir=input_path
 	
 	## If the optional scrape flag has False selected, then read from file
 	## (input_path must contain a properly formated option chain.)
-	if scrape==False:
-		try:
+    if scrape==False:
+        try:
 			## Here is how to open it back up again.
-			bs_json=pd.io.json.read_json(input_path)
+			#bs_json=pd.io.json.read_json(input_path)
+            bs_json=pd.read_json(input_path)
 			
-			pframes=[pd.DataFrame(
-				chain['optionChain']['result'][0]['options'][0]['puts']) 
-				for chain in bs_json[0].iloc[:]]
-			cframes=[pd.DataFrame(
-				chain['optionChain']['result'][0]['options'][0]['calls']) 
-				for chain in bs_json[0].iloc[:]]
-			df_puts=pd.concat(pframes)
-			df_calls=pd.concat(cframes)
+			#pframes=[pd.DataFrame(
+			#	chain['optionChain']['result'][0]['options'][0]['puts']) 
+			#	for chain in bs_json[0].iloc[:]]
+			#cframes=[pd.DataFrame(
+			#	chain['optionChain']['result'][0]['options'][0]['calls']) 
+			#	for chain in bs_json[0].iloc[:]]
+            pframes=[pd.DataFrame(chain[0]['options'][0]['puts']) 
+                                  for chain in bs_json[1][:]]
+            cframes=[pd.DataFrame(chain[0]['options'][0]['calls'] )
+                                  for chain in bs_json[1][:]]
+            
+            df_puts=pd.concat(pframes)
+            df_calls=pd.concat(cframes)
 			## merge on strike:
-			df=df_calls.merge(df_puts,how='outer',on=['expiration','strike'],suffixes=('_c','_p'))
+            df=df_calls.merge(df_puts,how='outer',on=['expiration','strike'],suffixes=('_c','_p'))
 			#df.expiration=df.expiration.apply(lambda d: datetime.utcfromtimestamp(d))	
 			#df.lastTradeDate_c=df.lastTradeDate_c.apply(lambda d: datetime.utcfromtimestamp(d))
 			#df.lastTradeDate_p=df.lastTradeDate_p.apply(lambda d: datetime.utcfromtimestamp(d))
@@ -84,55 +90,63 @@ def yahoo_option_chain_multi_exp(input_path,ticker,scrape=True):
 			#	names=['expiration','strike']),fill_value=np.NaN)	
 		
 			## Need expiry dates as an output
-			expiry_dates=bs_json[0].iloc[0]['optionChain']['result'][0]['expirationDates']
+			#expiry_dates=bs_json[0].iloc[0]['optionChain']['result'][0]['expirationDates']
+            expiry_dates=bs_json[1][0][0]['expirationDates']
+
 			## Also need spot price as an output
-			spot_price=bs_json[0].iloc[0]['optionChain']['result'][0]['quote'][
-				'regularMarketPrice']
+			#spot_price=bs_json[0].iloc[0]['optionChain']['result'][0]['quote'][
+			#	'regularMarketPrice']
+            spot_price=bs_json[1][0][0]['quote']['regularMarketPrice']
 			## The time when the data was queried; this should be in eastern time
 			## so no need for any conversions.
-			tquery=bs_json[0].iloc[0]['optionChain']['result'][0]['quote']['regularMarketTime']
-			## not really tnow, this was the time when the data was queried. 
+			#tquery=bs_json[0].iloc[0]['optionChain']['result'][0]['quote']['regularMarketTime']
+            tquery=bs_json[1][0][0]['quote']['regularMarketTime']
+            ## not really tnow, this was the time when the data was queried. 
 			## Using this as the output for tnow.
 			## Might be interesting to get the market time for all the other 
 			## chains (.iloc[0] to highest row number) to see how different the 
 			## times are. It takes some time to access each chain, causing a delay
-			tnow=pd.to_datetime(datetime.utcfromtimestamp(tquery))
+            tnow=pd.to_datetime(datetime.utcfromtimestamp(tquery))
 		
 		## throw error if the file does not exist
-		except: #FileNotFoundError
-			print('File not found, check filename, directory')
-			tnow=''
-			expiry_dates=''
-			spot_price=''
-			df=''
+        except: #FileNotFoundError
+            print('File not found, check filename, directory')
+            tnow=''
+            expiry_dates=''
+            spot_price=''
+            df=''
 		
 		
 		
 	
 	## If no datafile is given, query the data from yahoo website
-	else:
+    else:
 
 		## First get expiry dates.
 		## use query1.stuff or query2?
-		url_string=('https://query2.finance.yahoo.com/v7/finance/options/'+ticker)
-		bs_json = pd.io.json.read_json(url_string)
+        url_string=('https://query1.finance.yahoo.com/v7/finance/options/'+ticker)
+		#bs_json = pd.io.json.read_json(url_string)
+        bs_json = pd.read_json(url_string)
 		## found through trial and error, hopefully all yahoo option chains 
 		## look like this
-		entries=bs_json['optionChain']['result'][0].keys()
+        entries=bs_json['optionChain']['result'][0].keys()
 		## We should keep the expiry dates, maybe output the array of expiry 
 		## dates
-		expiry_dates=bs_json['optionChain']['result'][0][entries[1]]
-
+		#expiry_dates=bs_json['optionChain']['result'][0][entries[1]]
+        expiry_dates=bs_json['optionChain']['result'][0]['expirationDates']
+        
 		## Kelly's idea:
 		## initialize an empty dataframe with len(expiry_dates) number of rows;
 		## each row will contain the json result for a given expiry date
 		## or, append to list?
 		## Is this fastest, or is there a better way?
-		option_chain_multi=[]
+        option_chain_multi=[]
 
-		for date in expiry_dates:
-			url_date=url_string+'?date='+str(date)
-			option_chain_multi.append(pd.io.json.read_json(url_date))
+        for date in expiry_dates:
+            url_date=url_string+'?date='+str(date)
+			#option_chain_multi.append(pd.io.json.read_json(url_date))
+            option_chain_multi.append(pd.read_json(url_date))
+
 	
 		## Near here:
 		## Get the risk free rate?
@@ -141,18 +155,19 @@ def yahoo_option_chain_multi_exp(input_path,ticker,scrape=True):
 
 		## need the date and time if we want to write to a csv file.
 		## Get this immediately after pinging the website.
-		tnow=pd.to_datetime('today').now()
+        tnow=pd.to_datetime('today').now()
 	
 		## now make a dataframe, and save it
-		option_chain=pd.DataFrame(option_chain_multi)	
+        option_chain=pd.DataFrame(np.squeeze(option_chain_multi))	
+        #option_chain=pd.concat(option_chain_multi).reset_index()
 		##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 		## Now, perform the necessary work to write to file.
 		## convert local time to utc.
 		#tnow=?
-		tnow=tnow.tz_localize(timezone).tz_convert('utc')
+        #tnow=tnow.tz_localize(timezone).tz_convert('utc')
 		## in practice though, we will just assume all times (for stock purposes) 
 		## to be in eastern time, so just convert our local time to that
-		tnow=tnow.tz_localize(timezone).tz_convert('US/Eastern')
+        tnow=tnow.tz_localize(timezone).tz_convert('US/Eastern')
 		## the time to expiration is today's date subtracted from the future date;
 		## get the result in units of days!
 		## Maybe texp belongs in a script or function where this function is 
@@ -165,25 +180,28 @@ def yahoo_option_chain_multi_exp(input_path,ticker,scrape=True):
 		#path=os.getcwd()+time.strftime("/%Y/%m/%d")
 		## in future, change target_dir to the path variable, given as an input to
 		## the function
-		path=target_dir+tnow.strftime("/%Y/%m/%d")
+        path=target_dir+tnow.strftime("/%Y/%m/%d")
 		## the line below is apparently for python 3!
 		#os.makedirs(path, exist_ok=True)
 		## Workaround for python 2
-		if not os.path.exists(path):
-			os.makedirs(path)
-		## convert tnow, the time at which the data was retrieved, into a string
-		## for a filename.
-		tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
+        if not os.path.exists(path):
+            os.makedirs(path)
+		## convert tnow, the time at which the data was retrieved, into a 
+		## string for a filename.
+        tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
 	
-		filename=path+'/'+tnow_str+'_'+ticker+'_full_chain'+'.txt'
+        filename=path+'/'+tnow_str+'_'+ticker+'_full_chain'+'.txt'
 	
-		option_chain.to_json(filename)
+        option_chain.to_json(filename)
 		##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 		## Clean up the data for output variables of this function!
 		#strikes=bs_json['optionChain']['result'][0][entries[2]]
 		## could also use midpoint of bid ask?
-		spot_price=option_chain[0][0]['optionChain']['result'][0]['quote'][
-			'regularMarketPrice']
+		#spot_price=option_chain[0][0]['optionChain']['result'][0]['quote'][
+		#	'regularMarketPrice']
+        #spot_price=option_chain.iloc[0]['result'][0]['quote'][
+        #    'regularMarketPrice']
+        spot_price=option_chain[1][0][0]['quote']['regularMarketPrice']
 
 	
 
@@ -192,7 +210,7 @@ def yahoo_option_chain_multi_exp(input_path,ticker,scrape=True):
 	
 		## Maybe this is the best way to concatenate the dataframes?
 		## DO NOT INCLUDE OPTION CHAINS THAT HAVE NO DATA!
-		pframes=[pd.DataFrame(
+        pframes=[pd.DataFrame(
 			chain['optionChain']['result'][0]['options'][0]['puts']) 
 			for chain in option_chain_multi]
 		## set index to strike for each dataframe in list? What is best way?
@@ -201,7 +219,7 @@ def yahoo_option_chain_multi_exp(input_path,ticker,scrape=True):
 		#		df.set_index(['expiration','strike'],inplace=True)
 
 	
-		cframes=[pd.DataFrame(
+        cframes=[pd.DataFrame(
 			chain['optionChain']['result'][0]['options'][0]['calls']) 
 			for chain in option_chain_multi]
 	
@@ -212,17 +230,17 @@ def yahoo_option_chain_multi_exp(input_path,ticker,scrape=True):
 
 		## I should make it so that the index level after expiry dates is strike
 		## price
-		df_puts=pd.concat(pframes,ignore_index=True)
+        df_puts=pd.concat(pframes,ignore_index=True)
 		## is now a good time to convert expiration column to pandas datetime?
 		#df_puts.set_index(['expiration','strike'],inplace=True)
 		#df_puts = pd.concat(pframes, keys=expiry_dates,names=['expiry_date','strike'])
 		## do the same for calls:
-		df_calls=pd.concat(cframes,ignore_index=True)
+        df_calls=pd.concat(cframes,ignore_index=True)
 		#df_calls.set_index(['expiration','strike'],inplace=True)
 
 		## New method: Make one dataframe for calls and puts
 		## merge on strike:
-		df=df_calls.merge(df_puts,how='outer',on=['expiration','strike'],suffixes=('_c','_p'))
+        df=df_calls.merge(df_puts,how='outer',on=['expiration','strike'],suffixes=('_c','_p'))
 		## Hmm, having problems with this too...
 		#df.expiration=df.expiration.apply(lambda d: datetime.utcfromtimestamp(d))	
 		## Last trade dates may have NaN entries, so clean these outside of here?
@@ -251,5 +269,5 @@ def yahoo_option_chain_multi_exp(input_path,ticker,scrape=True):
 		## should expiry dates be transformed to a regular datetime?
 		#datetime.utcfromtimestamp(expiry_dates)+timedelta(hours=16)
 
-	return tnow,expiry_dates,spot_price,df
+    return tnow,expiry_dates,spot_price,df
 

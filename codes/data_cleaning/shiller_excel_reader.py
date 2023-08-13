@@ -32,30 +32,32 @@ def shiller_excel_reader(filename):
 	## if you want to read from file:
 	## (Were I usually keep it:
 	## '/home/jjwalker/Desktop/finance/data/stocks/ie_data.xls'
-	try:
-		df=pd.read_excel(filename,sheetname='Data',header=7)
-	except:
-		print('Shiller Data not found in filename specified. Using website data instead.')
+    try:
+        df=pd.read_excel(filename,sheet_name='Data',header=7)
+    except:
+        print('Shiller Data not found in filename specified. Using website data instead.')
 		## access website or read from file and put into desired format
-		df=pd.read_excel('http://www.econ.yale.edu/~shiller/ie_data.xls',
-			sheetname='Data',header=7)
+        df=pd.read_excel('http://www.econ.yale.edu/~shiller/ie_data.xls',
+                   name='Data',header=7)
 	## Either one or the other in the try block above should have worked, so
 	## continue
 
 	## convert Date to string:
-	df['Date']=df['Date'].apply(str)
+    df['Date']=df['Date'].apply(str)
 	## need to make this replacement first, due to the fact that October 
 	## is listed as .1 instead of .10 in the excel file.
 	## Must be an easier way to do this, maybe ask Kelly how to do these regex
 	## calls more efficient (fewer commands)
-	df['Date']=df['Date'].replace(r'\.1','-10',regex=True)
-	df['Date']=df['Date'].replace(r'-101','-11',regex=True)
-	df['Date']=df['Date'].replace(r'-102','-12',regex=True)
+    df['Date']=df['Date'].replace(r'\.1','-10',regex=True)
+    df['Date']=df['Date'].replace(r'-101','-11',regex=True)
+    df['Date']=df['Date'].replace(r'-102','-12',regex=True)
 	## replace decimal with dash in order to convert column to datetime
-	df['Date']=df['Date'].replace('\.','-',regex=True)
-	df['Date']=pd.to_datetime(df.Date)
+    df['Date']=df['Date'].replace('\.','-',regex=True)
+    df['Date']=pd.to_datetime(df.Date)
 	#df['Date'] = pd.to_datetime(df.Date,infer_datetime_format=True)
-	df=df.set_index('Date')
+    df=df.set_index('Date')
+    ## In case there are NaT issues?
+    df=df[~np.isnat(df.index)]
 	## is this necessary?
 	#df=df[df.columns].apply(pd.to_numeric,errors='coerce')
 	
@@ -72,4 +74,4 @@ def shiller_excel_reader(filename):
 
 
 	## return the data as a data frame with the chosen format
-	return df
+    return df
