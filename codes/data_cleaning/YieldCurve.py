@@ -13,6 +13,7 @@ Created on Sun Sep 26 21:30:47 2021
 
 import pandas as pd
 import json
+from datetime import timedelta
 from pandas.tseries.offsets import MonthEnd
 from pandas.tseries.offsets import MonthBegin
 from pandas.tseries.offsets import QuarterBegin
@@ -38,20 +39,30 @@ import time
 sys.path.insert(1, '/Users/31643/Desktop/finance_2023/codes/data_cleaning')
 from fred_api import fred_api
 
+# 2023-08-16:
+# I realized that I should just add the write_to_file=False into this function,
+# so that the control logic is only written once!
+# This way, I can get rid of many lines of unnecessary lines of code.
 def write_dataframe_to_file(df,
+                  write_to_file=False,
                   filename='sample_csv',
                   write_path='/Users/31643/Desktop/finance_2023/data/bonds'):
     
     tnow=pd.to_datetime('today').now()
-    try:
-        path=write_path+tnow.strftime("/%Y/%m/%d")
-        os.makedirs(path, exist_ok=True)
-        tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
-        fullname=path+'/'+filename+'_'+tnow_str+'.csv'
-        df.to_csv(fullname,sep=',')
-        print('Data successfully printed to file.')
-    except:
-        print('Your file did not save.')
+    if write_to_file==True:
+        try:
+            path=write_path+tnow.strftime("/%Y/%m/%d")
+            os.makedirs(path, exist_ok=True)
+            tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
+            fullname=path+'/'+filename+'_'+tnow_str+'.csv'
+            df.to_csv(fullname,sep=',')
+            print(filename+'.csv successfully printed to file in path: '
+                  +path+'/')
+        except:
+            print('Your file did not save.')
+    else:
+        print("Warning: You have chosen not to save the file. "+
+              "write_to_file=False")
     
     return
 
@@ -394,6 +405,32 @@ def marketwatch_treasury_scraper(country_code,security_cusips,
     print('Yield and price scraping complete.')
   
     return price_df
+
+def zero_coupon_from_forward_hull(frate,texp):
+    
+    y=np.zeros(len(frate))
+    y[0]=frate[0]
+    
+    for index in range(len(y)-1):
+        # Original code:
+        # y[index+1]=(sofr_zero_rate[index+1]*(t_exp[index+1]-t_exp[index])
+        #             +y[index]*t_exp[index])/(t_exp[index+1])
+        tau=(texp[index+1]-texp[index])
+        y[index+1]=(texp[index]*y[index]
+                    +tau*frate[index+1])/(texp[index+1])
+    return y
+
+def zero_coupon_from_forward_mercurio(frate,texp):
+    
+    y=np.zeros(len(frate))
+    y[0]=frate[0]
+    
+    for index in range(len(y)-1):
+        tau=(texp[index+1]-texp[index])
+        # Shouldn't the rate be divided by something?
+        y[index+1]=(texp[index]*y[index]
+                    +np.log(1+tau*frate[index+1]))/texp[index+1]
+    return y
 
 def reorder_interest_payments(first_payment,
                               second_payment,
@@ -1076,16 +1113,39 @@ class YieldCurve(object):
         self.maturity_df=maturity_df
         self.market_df=market_df
                  
+    def calculate_price_from_yield(self):
+        
+        # can we assume that accrued interest has been calculated in the 
+        # market_df?
+        
+        return
     
-    
-    def analytical_bootstrap(self,tol_days=15,use_yield=True):
+    def analytical_bootstrap(self,cutoff_days=0,tol_days=15,use_yield=True):
         # This method should be inherited by all subclasses!
         # Consider a simple interpolation for gaps between maturities?
         # Seems to be working reasonably, 2021 December 26
         tnow=pd.to_datetime('today').now()
         
-        cash_subframe=self.cashflow_df[self.cashflow_df.index>tnow]    
-        mat_subframe=self.maturity_df[self.maturity_df.index>tnow]
+        # 2023-08-13
+        # Sometimes, treasury securities behave strangely close to maturity.
+        # use a cutoff date to eliminate securities that mature within a 
+        # specified timeframe 
+        cutoff_date=tnow+pd.DateOffset(days=cutoff_days)
+        
+        market_subframe=self.market_df[self.market_df.index>cutoff_date]
+        # market_subframe=self.market_df
+        
+        # 2023-08-13:
+        # Use of a specific column is an annoying source of fragility and 
+        # future problems, but I am using this for now.
+        use_columns=market_subframe['CUSIP Index'].values
+        # Original, older code that may work in the future, but does not work
+        # now
+        # cash_subframe=self.cashflow_df[self.cashflow_df.index>cutoff_date]    
+        # mat_subframe=self.maturity_df[self.maturity_df.index>cutoff_date]
+        cash_subframe=self.cashflow_df[use_columns]    
+        mat_subframe=self.maturity_df[use_columns]
+        
         
         # Let us try to calculate market prices from the quoted yield, and
         # compare to the market price; perhaps the price is note listed
@@ -1095,95 +1155,194 @@ class YieldCurve(object):
         # Maybe I could even make this 0
         tol=tol_days/365.24
         # "preallocate" for the spot yield?
-        s=np.zeros(len(self.market_df))
+        # s=np.ones(len(market_subframe))*0.053
+        s=np.zeros(len(market_subframe))*np.nan
         #s_ask=np.zeros(len(self.note_df))
         # or, use length of the cash_subframe?
         #salt=np.zeros(len(cash_subframe))
         # this actually works, unlike my implementation for s so far.
-        salt=np.zeros(len(self.market_df))
+        # salt=np.zeros(len(self.market_df))
         # maturity array?
-        mat=np.zeros(len(self.market_df))
+        mat=np.zeros(len(market_subframe))
+        
+        bond_price=[]
+        bd=[]
         
         ncols=len(cash_subframe.columns)
         for col in range(ncols):
             # Find number of coupon payments remaining
             npayments=len(cash_subframe[cash_subframe.columns[col]].dropna())
             
+            # 2023-08-13:
+            # calculate the coupon maturities for this particular note/bond
+            # in the loop; I think this should work even if npayments==1.
+            # However, this probably does not work for tbills, but maybe this is
+            # ok, Tbills are in a segmented market relative to notes and bonds
+            coupon_maturities=mat_subframe[
+                                mat_subframe.columns[col]].dropna().values
+            
+            # correction needed for the nearest coupon payment due to accrued 
+            # interest
+            ai_correction=np.zeros(
+                len(cash_subframe[cash_subframe.columns[col]].dropna().values))
+            
+            ai_correction[0]=market_subframe.accrued_interest.iloc[col]
+            
+            # Calculate the clean price from yield
+            price_from_yield=(np.sum((
+                cash_subframe[cash_subframe.columns[col]].dropna().values
+                -ai_correction)/(
+                    1+market_subframe.market_yield.iloc[col]/200)**(
+                        2*coupon_maturities)))
+            
+            bond_price.append(price_from_yield)            
+                        
+            if use_yield==True:
+                clean_price=1.0*price_from_yield
+            else:
+                clean_price=market_subframe.market_price.iloc[col]
+            
+            dirty_price=(clean_price
+                    +market_subframe.accrued_interest.iloc[col])
+            
+            # dirty_price=clean_price*1.0
+            
+            bd.append(dirty_price)
+            
             # This statement allows us to compute spot rates at start of the 
             # bootstrap
-            if (npayments==1) and (self.market_df.market_price.iloc[col]!=0):
+            if (npayments==1) and (market_subframe.market_price.iloc[col]!=0):
                 mat[col]=mat_subframe[mat_subframe.columns[col]].dropna()
                 
-                if use_yield==True:
-                    # Very simple solution; just convert the market yields of 
-                    # "zero-coupon" notes/bonds to exponential
-                    # salt[col]=2*np.log(1+self.market_df.market_yield.iloc[col]/200)
-                    s[col]=self.market_df.market_yield.iloc[col]/100
-                else:
-                    s[col]=np.log((cash_subframe[cash_subframe.columns[col]
-                                            ].dropna().values)/(
-                            self.market_df.market_price.iloc[col]+
-                            self.market_df.accrued_interest.iloc[col]))/(
-                                mat[col])
+                s[col]=2*(np.exp(np.log(cash_subframe[
+                    cash_subframe.columns[col]].dropna().values[0]/dirty_price
+                    )/(2*mat[col]))-1)
+                
+                # if use_yield==True:
+                #     # Very simple solution; just convert the market yields of 
+                #     # "zero-coupon" notes/bonds to exponential
+                #     # s[col]=2*np.log(1+self.market_df.market_yield.iloc[col]/200)
+                #     s[col]=self.market_df.market_yield.iloc[col]/100
+                    
+                    
+                # else:
+                #     s[col]=np.log((cash_subframe[cash_subframe.columns[col]
+                #                             ].dropna().values)/(
+                #             self.market_df.market_price.iloc[col]+
+                #             self.market_df.accrued_interest.iloc[col]))/(
+                #                 mat[col])
+                                
+                    
                                 
             # What to do when we get past the "zero coupon" notes?
-            elif (npayments>1) and (self.market_df.market_price.iloc[col]!=0):
+            elif (npayments>1) and (market_subframe.market_price.iloc[col]!=0):
                 mat[col]=mat_subframe[mat_subframe.columns[col]].dropna()[-1]
-                coupon_maturities=mat_subframe[
-                                    mat_subframe.columns[col]].dropna().values
                 # There must be a better way to do this, with a np method
                 closest_indices=[]
                 for elapsed_time in coupon_maturities[:-1]:
                     # Maybe pick highest yield from securities available, if
                     # there is more than one match?
-                    match=abs(mat-elapsed_time).argmin()
+                    # 2023-08-13:
+                    # I think this command, while well-intentioned, is 
+                    # oversimplifed if I want to take the highest spot yield 
+                    # available
+                    # match=abs(mat-elapsed_time).argmin()
+                    
+                    # 2023-08-13:
+                    # Here is the new solution:
+                    # find the highest yield available for the payment date 
+                    # that is closest to the maturity date in the maturity 
+                    # array, mat
+                    closest_mat=np.where((abs(mat-elapsed_time)
+                                          ==np.min(abs(mat-elapsed_time))))
+
+                    # 2023-08-13:
+                    # Sometimes you can get the error: All-NaN slice 
+                    # encountered. 
+                    try:
+                        spot_index=np.nanargmax(s[(abs(mat-elapsed_time)
+                                          ==np.min(abs(mat-elapsed_time)))])
+                    
+                        match=closest_mat[0][spot_index]
+                    except:
+                        # possibly print an error message
+                        print("No non-Nan spot values; s,mat array number: "
+                              +str(col)+" cannot be used for the bootstrap.")
+                        # Use "the old command", just to keep the program 
+                        # running. No non-nan spot value will be calculated.
+                        match=abs(mat-elapsed_time).argmin()
+                    
                     closest_indices.append(match)
                 
                 if np.all(abs(coupon_maturities[:-1]-mat[closest_indices])<
                           tol):
                     
-                    if use_yield==True:
-                        # price_from_yield=(np.sum(cash_subframe[
-                        #     cash_subframe.columns[col]].dropna().values/(
-                        #         1+self.market_df.market_yield.iloc[col]/200)**(
-                        #             2*coupon_maturities))-
-                        #             self.market_df.accrued_interest.iloc[col])
+                    # if use_yield==True:
+                    #     # price_from_yield=(np.sum(cash_subframe[
+                    #     #     cash_subframe.columns[col]].dropna().values/(
+                    #     #         1+self.market_df.market_yield.iloc[col]/200)**(
+                    #     #             2*coupon_maturities))-
+                    #     #             self.market_df.accrued_interest.iloc[col])
                         
-                        # 2023-08-13:
-                        # I read that the dirty price must be used!
-                        price_from_yield=(np.sum(cash_subframe[
-                            cash_subframe.columns[col]].dropna().values/(
-                                1+self.market_df.market_yield.iloc[col]/200)**(
-                                    2*coupon_maturities))
-                            +self.market_df.accrued_interest.iloc[col])
-                                    
-                        # Now that closest time indices are known, we can solve  
-                        # for the spot rate at the maturity date at mat[col]           
-                        s[col]=np.log((cash_subframe[cash_subframe.columns[col]
-                                                ].dropna().values[-1])/(
-                                price_from_yield+
-                                   self.market_df.accrued_interest.iloc[col]-
-                                   np.sum(cash_subframe[
-                                       cash_subframe.columns[col]
-                                       ].dropna().values[:-1]*np.exp(-
-                                                salt[closest_indices]*mat[
-                                                closest_indices]))))/(mat[col]) 
-                    else:
+                    #     clean_price=(np.sum(cash_subframe[
+                    #         cash_subframe.columns[col]].dropna().values/(
+                    #             1+self.market_df.market_yield.iloc[col]/200)**(
+                    #                 2*coupon_maturities)))
+                        
+                    #     # 2023-08-13:
+                    #     # I read that the dirty price must be used!
+                    #     dirty_price=(clean_price
+                    #             +self.market_df.accrued_interest.iloc[col])
+              
+                    #     # Now that closest time indices are known, we can solve  
+                    #     # for the spot rate at the maturity date at mat[col]           
+                    #     # s[col]=np.log((cash_subframe[cash_subframe.columns[col]
+                    #     #                         ].dropna().values[-1])/(
+                    #     #         dirty_price-
+                    #     #             np.sum(cash_subframe[
+                    #     #                 cash_subframe.columns[col]
+                    #     #                 ].dropna().values[:-1]*np.exp(-
+                    #     #                         s[closest_indices]*mat[
+                    #     #                         closest_indices]))))/(mat[col]) 
 
-                        # Now that closest time indices are known, we can solve  
-                        # for the spot rate
-                        s[col]=np.log((cash_subframe[cash_subframe.columns[col]
-                                            ].dropna().values[-1])/(
-                            self.market_df.market_price.iloc[col]+
-                               self.market_df.accrued_interest.iloc[col]-
-                               np.sum(cash_subframe[cash_subframe.columns[col]
-                                            ].dropna().values[:-1]*np.exp(-
-                                                s[closest_indices]*mat[
-                                                closest_indices]))))/(mat[col])
+                    # else:
+                    #     # Now that closest time indices are known, we can solve  
+                    #     # for the spot rate
+                    #     # s[col]=np.log((cash_subframe[cash_subframe.columns[col]
+                    #     #                     ].dropna().values[-1])/(
+                    #     #     self.market_df.market_price.iloc[col]+
+                    #     #        self.market_df.accrued_interest.iloc[col]-
+                    #     #        np.sum(cash_subframe[cash_subframe.columns[col]
+                    #     #                     ].dropna().values[:-1]*np.exp(-
+                    #     #                         s[closest_indices]*mat[
+                    #     #                         closest_indices]))))/(mat[col])
+                        
+                    #     dirty_price=(self.market_df.market_price.iloc[col]+
+                    #                  self.market_df.accrued_interest.iloc[col])
+                        
+                    # Now that closest time indices are known, we can solve  
+                    # for the spot rate
+                    s[col]=2*(np.exp(np.log(
+                            (cash_subframe[cash_subframe.columns[col]
+                                ].dropna().values[-1])/(dirty_price-
+                                np.sum(cash_subframe[
+                                cash_subframe.columns[col]
+                                ].dropna().values[:-1]*(
+                                    1/(1+s[closest_indices]/2)**(
+                                        2*mat[closest_indices])) 
+                                        )))/(2*mat[col]))-1) 
+                        
                 else:
                     mat[col]=0
         
-        return mat,s
+        # 2023-08-13: Double check that this is the best way to produce a 
+        # datetime array
+        mat_date=[tnow+timedelta(x) for x in np.round(mat*365.25)]
+        
+        # output the spot rate, continuously compounded:
+        s_cc=100*(2*np.log(1+s/2))
+        
+        return mat_date,mat,s,s_cc,bond_price,bd,cash_subframe,mat_subframe
     
     # simple linear interpolation instance method here to get zero coupon bonds
     # between maturity dates; call the method above to get the values
@@ -1926,8 +2085,8 @@ class USYieldCurve(YieldCurve):
         # Raise error is smarter here instead of just plowing ahead
         self.bill_df=pd.concat([self.bill_df,market_data],axis=1)
         
-        if write_to_file==True:
-            try:
+        
+        try:
                 # path=write_path+tnow.strftime("/%Y/%m/%d")
                 # os.makedirs(path, exist_ok=True)
                 # tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
@@ -1937,14 +2096,15 @@ class USYieldCurve(YieldCurve):
                 #               "market_price","market_yield"]
                 #              ].to_csv(bill_file,sep=',')
                 
-                write_dataframe_to_file(df=self.bill_df[
+            write_dataframe_to_file(write_to_file=write_to_file,
+                                        df=self.bill_df[
                     ["bill_cusip","bill_issue_date","bill_maturity_date",
                               "market_price","market_yield"]],
                     filename='bills')
                 
-                print('Data successfully printed to file.')
-            except:
-                print('Your file did not save.')
+            print('Data successfully printed to file.')
+        except:
+            print('Your file did not save.')
         
         return market_data,self.bill_df
     
@@ -2036,8 +2196,7 @@ class USYieldCurve(YieldCurve):
                           index=self.note_df.index,name='note_mod_dur')
         self.note_df=pd.concat([self.note_df,mod_dur],axis=1)
         
-        if write_to_file==True:
-            try:
+        try:
                 # path=write_path+tnow.strftime("/%Y/%m/%d")
                 # os.makedirs(path, exist_ok=True)
                 # tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
@@ -2048,14 +2207,15 @@ class USYieldCurve(YieldCurve):
                 #               "note_accrued_interest"]
                 #              ].to_csv(note_file,sep=',')
                 
-                write_dataframe_to_file(df=self.note_df[
+            write_dataframe_to_file(write_to_file=write_to_file,
+                                        df=self.note_df[
                     ["note_cusip","note_maturity_date",
                      "note_issue_date","market_price","market_yield",
                                   "note_accrued_interest"]],
                     filename='notes')
-                print('Data successfully printed to file.')
-            except:
-                print('Something bad happened, I dunno. Your file didnt save.')
+            print('Data successfully printed to file.')
+        except:
+            print('Something bad happened, I dunno. Your file didnt save.')
         
         return note_data,self.note_df
     
@@ -2140,8 +2300,7 @@ class USYieldCurve(YieldCurve):
                           index=self.bond_df.index,name='bond_mod_dur')
         self.bond_df=pd.concat([self.bond_df,mod_dur],axis=1)
         
-        if write_to_file==True:
-            try:
+        try:
                 # path=write_path+tnow.strftime("/%Y/%m/%d")
                 # os.makedirs(path, exist_ok=True)
                 # tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
@@ -2152,15 +2311,16 @@ class USYieldCurve(YieldCurve):
                 #               "bond_accrued_interest"]
                 #              ].to_csv(bond_file,sep=',')
                 
-                write_dataframe_to_file(df=self.bond_df[
+            write_dataframe_to_file(write_to_file=write_to_file,
+                                        df=self.bond_df[
                     ["bond_cusip","bond_maturity_date",
                      "bond_issue_date","market_price","market_yield",
                                   "bond_accrued_interest"]],
                     filename='bonds')
                 
-                print('Data successfully printed to file.')
-            except:
-                print('Something bad happened, I dunno. Your file didnt save.')
+            print('Data successfully printed to file.')
+        except:
+            print('Something bad happened, I dunno. Your file didnt save.')
         
         return market_data,self.bond_df
     
@@ -2238,8 +2398,8 @@ class USYieldCurve(YieldCurve):
         # # Update with Macaulay duration 
         # self.tips_df=pd.concat([self.tips_df,mac_dur],axis=1)
         
-        if write_to_file==True:
-            try:
+        
+        try:
                 # path=write_path+tnow.strftime("/%Y/%m/%d")
                 # os.makedirs(path, exist_ok=True)
                 # tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
@@ -2250,15 +2410,16 @@ class USYieldCurve(YieldCurve):
                 #               "tips_accrued_interest"]
                 #              ].to_csv(file,sep=',')
                 
-                write_dataframe_to_file(df=self.tips_df[
+            write_dataframe_to_file(write_to_file=write_to_file,
+                                        df=self.tips_df[
                     ["tips_cusip","tips_maturity_date",
                      "tips_issue_date","market_price","market_yield",
                                   "tips_accrued_interest"]],
                     filename='tips')
                 
-                print('Data successfully printed to file.')
-            except:
-                print('Something bad happened, I dunno. Your file didnt save.')
+            print('Data successfully printed to file.')
+        except:
+            print('Something bad happened, I dunno. Your file didnt save.')
         
         return market_data,self.tips_df
     
@@ -2435,8 +2596,8 @@ class USYieldCurve(YieldCurve):
                                 'coupon':coupon.values},
                           index=pd.DatetimeIndex(mat))
             
-        if write_to_file==True:
-            try:
+        
+        try:
                 # path=write_path+tnow.strftime("/%Y/%m/%d/")
                 # os.makedirs(path, exist_ok=True)
                 # tnow_str=tnow.strftime("%Y_%m_%d_%H_%M")
@@ -2444,14 +2605,14 @@ class USYieldCurve(YieldCurve):
                 #                 + 'us_treasury_otrs'
                 #                 + tnow_str+'.csv')
                 
-                write_dataframe_to_file(df=otrs_df,
+            write_dataframe_to_file(write_to_file=write_to_file,
+                                        df=otrs_df,
                     filename='us_treasury_otrs')
-                print('Data successfully printed to file.')
-            except:
-                print('Something bad happened, and your plot did not save.')
+            print('Data successfully printed to file.')
+        except:
+            print('Something bad happened, and your plot did not save.')
         
         return otrs_df
-    
     
     def plot_notes_and_bonds(self,ctds=[],
                         plot_otrs=False,
@@ -2613,9 +2774,7 @@ class USYieldCurve(YieldCurve):
                     + tnow_str+'.png')
                 print('Data successfully printed to file.')
             except:
-                print('Something bad happened, and your plot did not save.')
-
-        
+                print('Something bad happened, and your plot did not save.')    
         return
 # Is there a treasury futures yield curve? I think there should be...
 # In fact, maybe it is a subclass of USYieldCurve?
@@ -3034,10 +3193,25 @@ class USTreasuryFutures(USYieldCurve):
         fact=self.maturity_df[str(cusip_row)
                                 ].dropna().values*self.cashflow_df[
                 str(cusip_row)].dropna().values
+        # 2023-08-13: Realization: This calculation should be done in the 
+        # YieldCurve class, possibly as a method.
+        # I think that I make this calculation many times in several places;  
+        # just do it once! Same for calculation of accrued interest, needed as
+        # an input for bond pricing.
         d=1/(1+futures_df_row['market_yield']/200)**(
                     2*self.maturity_df[str(cusip_row)].dropna().values)
-        # you need to subtract accrued interest to get the clean price
-        b=np.sum(self.cashflow_df[str(cusip_row)].dropna().values*d)-ai
+        # you need to subtract accrued interest to get the clean price.
+        # 2023-08-23:
+        # Remember, need to implement the change here where we substract the
+        # ai from the first discounted cashflow!
+        ai_correction=np.zeros(
+            len(self.cashflow_df[str(cusip_row)].dropna().values))
+        ai_correction[0]=ai
+        b=np.sum((self.cashflow_df[str(cusip_row)].dropna().values
+                  -ai_correction)*d)
+        # 2023-08-23:
+        # This was the original code, in case I need to revert:
+        # b=np.sum((self.cashflow_df[str(cusip_row)].dropna().values)*d)-ai
         
         futures_df_row['market_price']=b
         # Need 2 columns to discriminate between clean and dirty price!
@@ -3092,6 +3266,8 @@ class USTreasuryFutures(USYieldCurve):
         futures_df_row['gross_basis']=(futures_df_row['treasury_clean_price']
                                        -futures_df_row['conversion_factor'
                                         ]*futures_df_row['intra_day_price'])
+        # calculate the basis net of carry:
+        
         # Calculate the carry?
         # or a column for coupon income?
         
@@ -3230,6 +3406,9 @@ class USTreasuryFutures(USYieldCurve):
     
         return
     
+    # Useful to increase the display width when outputting the info for pasting
+    # pd.set_option('display.width', 250)
+    # pd.set_option('display.max_columns', 10)
     def all_ctds(self,ctd_date='last_delivery_date',write_to_file=False):
         
         # Initialize converstion factor, or do it as part of initialization?
@@ -3248,9 +3427,15 @@ class USTreasuryFutures(USYieldCurve):
             # The ctd_frame is just for a single contract
             ctd_frame=self.find_ctd(futures_code=contract,ctd_date=ctd_date)
             
-        if write_to_file==True:
-            print("Writing Note and Bond Futures dataframe to file")
-            write_dataframe_to_file(df=self.futures_df,filename='futures_df')
+        
+        write_dataframe_to_file(write_to_file=write_to_file,
+                                    df=self.futures_df,filename='futures_df')
+            
+        # Show the output of the important columns:
+        self.futures_df.loc[self.futures_df.is_ctd==True][
+            ['cusip','contract_code','irr','irr_minus_closest_bill_yield',
+             'treasury_clean_price','treasury_dirty_price',
+             'intra_day_price','gross_basis','open_interest']]
         
         return self.futures_df
     
@@ -4008,6 +4193,9 @@ class SOFRFutures(YieldCurve):
         # notwithstanding.
         # convert to continuous compounding
         # sofr_rate=(-3600/(day_count))*np.log(1-day_count/3600*(sofr_rate))
+        # 2023-08-16:
+        # I think this variable name is confusing; shouldn't it be called the 
+        # the continuously compounded forward rate?
         sofr_zero_rate=36500*np.log(1+sofr_rate/36000)
         # The spot sofr rate has 1 day to maturity
         t_exp=np.insert(t_exp,0,1/365.24)
@@ -4048,15 +4236,14 @@ class SOFRFutures(YieldCurve):
                                      'implied_yield':y,
                                      't_expiration':t_exp},
                                      index=expiration_dates)
-        if write_to_file==True:
-            # It might also be good to have an option to save to file the
-            # sofr price history
-            try:
-                # path=write_path+tnow.strftime("/%Y/%m/%d")
-                write_dataframe_to_file(df=market_df,
-                    filename='sofr_futures')
-            except:
-                print('Something bad happened, and your file did not save.')
+        
+        try:
+            # path=write_path+tnow.strftime("/%Y/%m/%d")
+            write_dataframe_to_file(write_to_file=write_to_file,
+                                        df=market_df,
+                                        filename='sofr_futures')
+        except:
+            print('Something bad happened, and your file did not save.')
         
         return cls('US',
             cashflow_df,
@@ -4131,7 +4318,7 @@ class SOFRFutures(YieldCurve):
     
     def write_sofr_data_to_file(self):
         
-        write_dataframe_to_file(self.market_df,
+        write_dataframe_to_file(write_to_file=True,df=self.market_df,
                           filename='sofr_data')
         
         # Maybe a separate write to file for market data, if the option was

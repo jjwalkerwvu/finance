@@ -41,6 +41,9 @@ def payment_time_array(years_to_maturity):
     return time_array
 
 # Note that this function assumes semi-annual compounding.
+# 2023-08-23:
+# This function may need to be adjusted because of the "pricing" problem I 
+# discovered
 def get_ytm(y,c,nperiods,bond_price):
     
     par_val=1000.0
@@ -296,6 +299,11 @@ class FedsYieldCurve:
     # 2023-06-30: This needs testing for the new feature: improved duration
     # calculations
     # Need to also get rid of the 1 day settlement!
+    # 2023-08-17: Need to include a fix for bond price ytm calculations, 
+    # because the accrued interest should be subtracted off from the discounted
+    # coupon payment that is closest to maturity, and then the undiscounted 
+    # accrued interest is added back to give the dirty price.
+    # This also affects duration calcs.
     def bond_price_quarterly_reset(self,years_to_mat,par_val=1000,nss=True):
         # Idea here is pick a start date, let the bond age for one quarter,
         # then buy another one with the same years to maturity, but keep track
@@ -348,10 +356,14 @@ class FedsYieldCurve:
             index_tracker=index_tracker+period
         # Need to fix the "overhang"; fill in data corresponding to the current
         # month/quarter which has not finished
+        # 2023-08-23:
+        # There is an obvious problem I have noticed for months now with this
+        # overhang calculation. There is an artificial jump in the simulated
+        # value
         overhang=len(self.data)-index_tracker
         #overhang_period=np.arange(overhang)      
-        year_arr[index_tracker:index_tracker+overhang,:]=(np.asmatrix(
-                    [parr]*overhang)
+        year_arr[index_tracker:index_tracker+overhang,:]=(
+            np.asmatrix([parr]*overhang)
                     -(np.asmatrix([np.arange(overhang)/365.24]*len(parr))).T)
         
         #test=(np.asmatrix([parr]*len(hold_period))
@@ -717,15 +729,17 @@ class FedsYieldCurve:
         yield_arr=self.zero_yields(tarr=parr,beta3=nss)
         # Compute the par equivalent yield; I think this is correct
         # A par yield should be the same as a constant maturity yield at t=0
-        ypar=2*(1-np.exp(-parr[-1]*yield_arr.values[:,-1]))/(
-            np.exp(-yield_arr*parr).sum(axis=1))
+        # ypar=2*(1-np.exp(-parr[-1]*yield_arr.values[:,-1]))/(
+        #     np.exp(-yield_arr*parr).sum(axis=1))
         
         # 2023-05-14: 
         # I'm not sure, but I think the above expression needs to be modified 
         # when there is accrued interest.
         # Need to test and check this, but this should be the correction:
-        # ypar=2*(1-np.exp(-parr[-1]*yield_arr.values[:,-1]))/(
-        #     np.exp(-yield_arr*parr).sum(axis=1)+(1-2*parr[0]))
+        # 2023-08-23:
+        # It's really time for this to go live, but need to test!
+        ypar=2*(1-np.exp(-parr[-1]*yield_arr.values[:,-1]))/(
+            np.exp(-yield_arr*parr).sum(axis=1)+(1-2*parr[0]))
         
         # I think it makes the most sense to use the clean price for 
         # Macaulay duration.
