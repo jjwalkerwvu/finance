@@ -219,6 +219,7 @@ def marketwatch_futures_scraper(futures_symbol,
             if save_history==True:
                 try:
                     write_dataframe_to_file(price_df,
+                              write_to_file=True,
                               filename=futures_symbol+'_'
                               +str(price_history_months)+'mo_history',
                               write_path='/Users/31643/Desktop/finance_2023/data/bonds')
@@ -2776,6 +2777,7 @@ class USYieldCurve(YieldCurve):
             except:
                 print('Something bad happened, and your plot did not save.')    
         return
+    
 # Is there a treasury futures yield curve? I think there should be...
 # In fact, maybe it is a subclass of USYieldCurve?
 # Because we will need to be able to get the full list of US treasuries
@@ -2959,6 +2961,7 @@ class USTreasuryFutures(USYieldCurve):
         futures_df['open_interest']=np.nan
         futures_df['mac_dur']=np.nan
         futures_df['mod_dur']=np.nan
+        futures_df['cash_dv01']=np.nan
         # Boolean column for whether a bond is cheapest to deliver
         futures_df['is_ctd']=False
         futures_df['futures_scrape_time']=pd.NaT
@@ -3000,6 +3003,8 @@ class USTreasuryFutures(USYieldCurve):
     # Calculate conversion factor for all contracts; delivery basket is 
     # already constructed
     # This should also be its own function!
+    # See this link for documentation:
+    # https://www.cmegroup.com/trading/interest-rates/files/Calculating_U.S.Treasury_Futures_Conversion_Factors.pdf
     def calculate_conversion_factor(self):
         
         tnow=pd.to_datetime('today').now()
@@ -3189,10 +3194,7 @@ class USTreasuryFutures(USYieldCurve):
         futures_df_row['market_yield']=y_pct
         # Really need to calculate bond price here, instead of relying on the
         # quote. See earlier examples
-        # fact is needed here to do the Macaulay/modified duration calculation
-        fact=self.maturity_df[str(cusip_row)
-                                ].dropna().values*self.cashflow_df[
-                str(cusip_row)].dropna().values
+        
         # 2023-08-13: Realization: This calculation should be done in the 
         # YieldCurve class, possibly as a method.
         # I think that I make this calculation many times in several places;  
@@ -3218,13 +3220,27 @@ class USTreasuryFutures(USYieldCurve):
         futures_df_row['treasury_clean_price']=b
         futures_df_row['treasury_dirty_price']=b+ai
         
+        # fact is needed here to do the Macaulay/modified duration calculation
+        fact=self.maturity_df[str(cusip_row)
+                                ].dropna().values*(self.cashflow_df[
+                str(cusip_row)].dropna().values-ai_correction)
+        
         # Calculate durations here.
-        # futures_df_row['mac_dur']=np.sum(fact*d)/(b+ai)
-        futures_df_row['mac_dur']=np.sum(fact*d)/(b)
+        futures_df_row['mac_dur']=np.sum(fact*d)/(b+ai)
+        # futures_df_row['mac_dur']=np.sum(fact*d)/(b)
         
         # Include also Modified duration!
         futures_df_row['mod_dur']=futures_df_row['mac_dur']/(
             1+futures_df_row['market_yield']/200.)
+        
+        # tu and z3n have 2000 instead of 1000 like the other contracts
+        contract_amount=(2000*((futures_df_row['cme_code']=='tu')
+                              |(futures_df_row['cme_code']=='z3n'))
+                         +1000*((futures_df_row['cme_code']!='tu')
+                              &(futures_df_row['cme_code']!='z3n')))
+        
+        futures_df_row['cash_dv01']=0.01*futures_df_row['mod_dur']*(
+            contract_amount)*(b+ai)*0.01
 
         # get the futures price for the contract corresponding to the 
         # note/bond above
